@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { analyzeRepository } from "./commands/analyze.js";
+import { listAdapters } from "./commands/adapters.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
@@ -59,6 +60,28 @@ program
     }
     console.log(`Shared files: ${analysis.sharedFiles.length}`);
     console.log("Wrote: .agentx/analysis.json");
+  });
+
+program
+  .command("adapters")
+  .description("List configured AgentX adapter presets.")
+  .action(async () => {
+    const adapters = await listAdapters(process.cwd());
+    if (adapters.length === 0) {
+      console.log("No adapters configured.");
+      return;
+    }
+
+    console.log("Configured adapters:");
+    for (const adapter of adapters) {
+      console.log(`- ${adapter.name} (${adapter.type})`);
+      if (adapter.commandTemplate) {
+        console.log(`  commandTemplate: ${adapter.commandTemplate}`);
+      }
+      if (adapter.description) {
+        console.log(`  ${adapter.description}`);
+      }
+    }
   });
 
 program

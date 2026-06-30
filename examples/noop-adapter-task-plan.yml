@@ -1,0 +1,15 @@
+version: 1
+runId: "example-noop-adapter"
+baseBranch: "main"
+
+protected:
+  - ".agentx/**"
+  - "package.json"
+  - "package-lock.json"
+
+agents:
+  smoke:
+    adapter: "noop"
+    task: "Exercise adapter command template resolution without changing repository files."
+    owns:
+      - "src/commands/**"

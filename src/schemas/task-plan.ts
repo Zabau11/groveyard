@@ -4,7 +4,7 @@ const nonEmptyString = z.string().trim().min(1);
 
 export const agentPlanSchema = z.object({
   adapter: nonEmptyString.default("generic"),
-  command: nonEmptyString,
+  command: nonEmptyString.optional(),
   task: nonEmptyString,
   owns: z.array(nonEmptyString).min(1),
   mayRead: z.array(nonEmptyString).default([]),

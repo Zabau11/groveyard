@@ -1,6 +1,7 @@
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { execa } from "execa";
+import { resolveAgentCommand } from "./adapters.js";
 import { validatePlanFile } from "./validate-plan.js";
 import { renderAgentTask, validateChangedFiles } from "../validation/ownership.js";
 import type { TaskPlan } from "../schemas/task-plan.js";
@@ -91,10 +92,16 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
 
   await mkdir(agentRunRoot, { recursive: true });
   await createWorktree(cwd, workspacePath, plan.baseBranch);
-  await writeFile(join(workspacePath, ".agentx-task.md"), renderAgentTask(agentName, agent, plan));
+  const taskFile = ".agentx-task.md";
+  await writeFile(join(workspacePath, taskFile), renderAgentTask(agentName, agent, plan));
+  const command = await resolveAgentCommand(cwd, {
+    agentName,
+    agent,
+    taskFile,
+  });
 
   const startedAt = new Date().toISOString();
-  const commandResult = await execa(agent.command, {
+  const commandResult = await execa(command, {
     cwd: workspacePath,
     shell: true,
     reject: false,
@@ -107,7 +114,8 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
     logPath,
     [
       `Agent: ${agentName}`,
-      `Command: ${agent.command}`,
+      `Adapter: ${agent.adapter}`,
+      `Command: ${command}`,
       `Started: ${startedAt}`,
       `Finished: ${finishedAt}`,
       `Exit code: ${exitCode}`,
@@ -145,7 +153,7 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
   const summary: AgentRunSummary = {
     agent: agentName,
     status,
-    command: agent.command,
+    command,
     exitCode,
     workspacePath,
     changedFiles,

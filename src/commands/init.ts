@@ -28,6 +28,27 @@ protected:
 adapters:
   generic:
     type: "shell"
+    description: "Use the command field from each agent in the task plan."
+
+  noop:
+    type: "shell"
+    commandTemplate: "mkdir -p agent-output && printf '{\\"version\\":1,\\"agent\\":\\"%s\\",\\"summary\\":\\"No-op adapter output.\\"}\\\\n' {{agent}} > agent-output/manifest.json"
+    description: "Local no-op adapter for testing plans without invoking a real coding agent."
+
+  codex:
+    type: "shell"
+    commandTemplate: "codex exec --full-auto {{taskFile}}"
+    description: "Runs Codex CLI against the generated task file. Edit this template if your local Codex CLI uses different flags."
+
+  claude:
+    type: "shell"
+    commandTemplate: "claude -p \"$(cat {{taskFile}})\""
+    description: "Runs Claude Code with the generated task file as the prompt."
+
+  cursor:
+    type: "shell"
+    commandTemplate: "cursor-agent -p \"$(cat {{taskFile}})\""
+    description: "Example Cursor agent command template; adjust to your local Cursor agent CLI."
 `,
   "ownership.yml": `version: 1
 
