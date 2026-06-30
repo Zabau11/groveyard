@@ -18,6 +18,15 @@ export const taskPlanSchema = z.object({
   baseBranch: nonEmptyString.default("main"),
   verify: z.array(nonEmptyString).default([]),
   protected: z.array(nonEmptyString).default([]),
+  generators: z
+    .object({
+      routes: z
+        .object({
+          output: nonEmptyString.default("src/generated/routes.ts"),
+        })
+        .optional(),
+    })
+    .default({}),
   agents: z.record(nonEmptyString, agentPlanSchema).refine((agents) => Object.keys(agents).length > 0, {
     message: "At least one agent is required",
   }),

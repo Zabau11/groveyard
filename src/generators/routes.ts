@@ -15,7 +15,7 @@ type AgentManifestInput = {
   manifestPath?: string;
 };
 
-export async function generateRoutesFile(workspacePath: string, agents: AgentManifestInput[]): Promise<GeneratedFile | undefined> {
+export async function generateRoutesFile(workspacePath: string, agents: AgentManifestInput[], outputPath = "src/generated/routes.ts"): Promise<GeneratedFile | undefined> {
   const manifests = await loadAcceptedManifests(agents);
   const routes = manifests
     .flatMap((manifest) => manifest.routes)
@@ -25,7 +25,6 @@ export async function generateRoutesFile(workspacePath: string, agents: AgentMan
     return undefined;
   }
 
-  const outputPath = "src/generated/routes.ts";
   const fullOutputPath = join(workspacePath, outputPath);
   await mkdir(dirname(fullOutputPath), { recursive: true });
   await writeFile(fullOutputPath, renderRoutes(routes));

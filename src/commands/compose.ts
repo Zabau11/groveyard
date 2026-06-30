@@ -1,8 +1,10 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execa } from "execa";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { generateRoutesFile, type GeneratedFile } from "../generators/routes.js";
+import { taskPlanSchema } from "../schemas/task-plan.js";
 
 const agentRunSummarySchema = z.object({
   agent: z.string(),
@@ -55,6 +57,7 @@ export async function composeRun(runId: string, cwd: string): Promise<Compositio
   }
 
   const runSummary = runSummarySchema.parse(JSON.parse(await readFile(summaryPath, "utf8")));
+  const taskPlan = taskPlanSchema.parse(parseYaml(await readFile(join(runRoot, "task-plan.yml"), "utf8")));
   const branch = `agentx/${runSummary.runId}`;
   const workspacePath = join(cwd, ".agentx", "worktrees", runSummary.runId, "integration");
 
@@ -106,7 +109,7 @@ export async function composeRun(runId: string, cwd: string): Promise<Compositio
     });
   }
 
-  const generatedFiles = await runGenerators(workspacePath, runSummary.agents);
+  const generatedFiles = await runGenerators(workspacePath, runSummary.agents, taskPlan.generators.routes?.output);
   const status = (applied.length > 0 || generatedFiles.length > 0) && skipped.length === 0 ? "composed" : applied.length > 0 || generatedFiles.length > 0 ? "composed_with_skips" : "composed_with_skips";
   const composition: CompositionSummary = {
     runId: runSummary.runId,
@@ -123,10 +126,10 @@ export async function composeRun(runId: string, cwd: string): Promise<Compositio
   return composition;
 }
 
-async function runGenerators(workspacePath: string, agents: AgentRunSummary[]): Promise<GeneratedFile[]> {
+async function runGenerators(workspacePath: string, agents: AgentRunSummary[], routesOutput?: string): Promise<GeneratedFile[]> {
   const acceptedAgents = agents.filter((agent) => agent.status === "accepted");
   const generatedFiles: GeneratedFile[] = [];
-  const routes = await generateRoutesFile(workspacePath, acceptedAgents);
+  const routes = await generateRoutesFile(workspacePath, acceptedAgents, routesOutput);
   if (routes) {
     generatedFiles.push(routes);
   }

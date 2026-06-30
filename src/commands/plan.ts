@@ -66,6 +66,7 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
     baseBranch: "main",
     verify: analysis.verify,
     protected: protectedPaths,
+    generators: {},
     agents,
   };
 
