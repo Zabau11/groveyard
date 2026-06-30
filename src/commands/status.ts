@@ -23,6 +23,7 @@ const compositionSummarySchema = z.object({
   workspacePath: z.string(),
   applied: z.array(z.unknown()),
   skipped: z.array(z.unknown()),
+  generatedFiles: z.array(z.unknown()).default([]),
 });
 
 const verificationSummarySchema = z.object({
@@ -30,12 +31,14 @@ const verificationSummarySchema = z.object({
   commands: z.array(z.unknown()),
 });
 
-type RunSummary = z.infer<typeof runSummarySchema>;
+type RunSummary = z.output<typeof runSummarySchema>;
+type CompositionSummary = z.infer<typeof compositionSummarySchema>;
+type VerificationSummary = z.output<typeof verificationSummarySchema>;
 
 export type RunStatusDetail = {
   run: RunSummary;
-  composition?: z.infer<typeof compositionSummarySchema>;
-  verification?: z.infer<typeof verificationSummarySchema>;
+  composition?: CompositionSummary;
+  verification?: VerificationSummary;
   reportExists: boolean;
 };
 
@@ -123,7 +126,7 @@ async function readRunStatus(runId: string, cwd: string): Promise<RunStatusDetai
   };
 }
 
-async function readOptionalJson<T>(path: string, schema: z.ZodType<T>): Promise<T | undefined> {
+async function readOptionalJson<S extends z.ZodTypeAny>(path: string, schema: S): Promise<z.output<S> | undefined> {
   if (!(await pathExists(path))) {
     return undefined;
   }

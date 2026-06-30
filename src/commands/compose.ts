@@ -2,6 +2,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execa } from "execa";
 import { z } from "zod";
+import { generateRoutesFile, type GeneratedFile } from "../generators/routes.js";
 
 const agentRunSummarySchema = z.object({
   agent: z.string(),
@@ -9,6 +10,7 @@ const agentRunSummarySchema = z.object({
   patchPath: z.string(),
   changedFiles: z.array(z.string()),
   violations: z.array(z.string()),
+  manifestPath: z.string().optional(),
 });
 
 const runSummarySchema = z.object({
@@ -41,6 +43,7 @@ type CompositionSummary = {
   workspacePath: string;
   applied: AppliedPatch[];
   skipped: SkippedPatch[];
+  generatedFiles: GeneratedFile[];
 };
 
 export async function composeRun(runId: string, cwd: string): Promise<CompositionSummary> {
@@ -103,7 +106,8 @@ export async function composeRun(runId: string, cwd: string): Promise<Compositio
     });
   }
 
-  const status = applied.length > 0 && skipped.length === 0 ? "composed" : applied.length > 0 ? "composed_with_skips" : "composed_with_skips";
+  const generatedFiles = await runGenerators(workspacePath, runSummary.agents);
+  const status = (applied.length > 0 || generatedFiles.length > 0) && skipped.length === 0 ? "composed" : applied.length > 0 || generatedFiles.length > 0 ? "composed_with_skips" : "composed_with_skips";
   const composition: CompositionSummary = {
     runId: runSummary.runId,
     status,
@@ -111,11 +115,27 @@ export async function composeRun(runId: string, cwd: string): Promise<Compositio
     workspacePath,
     applied,
     skipped,
+    generatedFiles,
   };
 
   await writeFile(join(runRoot, "composition.json"), `${JSON.stringify(composition, null, 2)}\n`);
 
   return composition;
+}
+
+async function runGenerators(workspacePath: string, agents: AgentRunSummary[]): Promise<GeneratedFile[]> {
+  const acceptedAgents = agents.filter((agent) => agent.status === "accepted");
+  const generatedFiles: GeneratedFile[] = [];
+  const routes = await generateRoutesFile(workspacePath, acceptedAgents);
+  if (routes) {
+    generatedFiles.push(routes);
+  }
+
+  if (generatedFiles.length > 0) {
+    await execa("git", ["add", ...generatedFiles.map((file) => file.path)], { cwd: workspacePath });
+  }
+
+  return generatedFiles;
 }
 
 async function ensureGitRepository(cwd: string): Promise<void> {

@@ -38,6 +38,13 @@ const compositionSummarySchema = z.object({
       changedFiles: z.array(z.string()),
     }),
   ),
+  generatedFiles: z.array(
+    z.object({
+      type: z.string(),
+      path: z.string(),
+      count: z.number(),
+    }),
+  ).default([]),
   skipped: z.array(
     z.object({
       agent: z.string(),
@@ -62,9 +69,9 @@ const verificationSummarySchema = z.object({
   ),
 });
 
-type RunSummary = z.infer<typeof runSummarySchema>;
+type RunSummary = z.output<typeof runSummarySchema>;
 type CompositionSummary = z.infer<typeof compositionSummarySchema>;
-type VerificationSummary = z.infer<typeof verificationSummarySchema>;
+type VerificationSummary = z.output<typeof verificationSummarySchema>;
 
 type ReportResult = {
   runId: string;
@@ -152,6 +159,7 @@ function renderReport(run: RunSummary, composition: CompositionSummary | undefin
 
   lines.push("## Composition", "");
   if (composition) {
+    const generatedFiles = composition.generatedFiles ?? [];
     lines.push(`Status: \`${composition.status}\``, "");
     lines.push(`Branch: \`${composition.branch}\``, "");
     lines.push(`Workspace: \`${composition.workspacePath}\``, "");
@@ -163,6 +171,12 @@ function renderReport(run: RunSummary, composition: CompositionSummary | undefin
       lines.push("", `Skipped patches: ${composition.skipped.length}`, "");
       for (const skipped of composition.skipped) {
         lines.push(`- \`${skipped.agent}\`: ${skipped.reason}`);
+      }
+    }
+    if (generatedFiles.length > 0) {
+      lines.push("", `Generated files: ${generatedFiles.length}`, "");
+      for (const generated of generatedFiles) {
+        lines.push(`- \`${generated.path}\` from ${generated.count} ${generated.type} item${generated.count === 1 ? "" : "s"}`);
       }
     }
   } else {
@@ -198,7 +212,7 @@ function renderReport(run: RunSummary, composition: CompositionSummary | undefin
   return `${lines.join("\n")}\n`;
 }
 
-async function readOptionalJson<T>(path: string, schema: z.ZodType<T>): Promise<T | undefined> {
+async function readOptionalJson<S extends z.ZodTypeAny>(path: string, schema: S): Promise<z.output<S> | undefined> {
   if (!(await pathExists(path))) {
     return undefined;
   }

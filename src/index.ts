@@ -292,6 +292,13 @@ program
     for (const applied of summary.applied) {
       console.log(`- ${applied.agent}: ${applied.changedFiles.length} changed files`);
     }
+    if (summary.generatedFiles.length > 0) {
+      console.log("");
+      console.log(`Generated files: ${summary.generatedFiles.length}`);
+      for (const generated of summary.generatedFiles) {
+        console.log(`- ${generated.path}: ${generated.count} ${generated.type} item${generated.count === 1 ? "" : "s"}`);
+      }
+    }
     if (summary.skipped.length > 0) {
       console.log("");
       console.log(`Skipped: ${summary.skipped.length}`);

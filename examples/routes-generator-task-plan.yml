@@ -1,0 +1,31 @@
+version: 1
+runId: "example-routes-generator"
+baseBranch: "main"
+
+verify:
+  - "test -f src/generated/routes.ts"
+
+protected:
+  - ".agentx/**"
+  - "src/generated/**"
+  - "package.json"
+  - "package-lock.json"
+
+agents:
+  auth:
+    adapter: "generic"
+    command: "mkdir -p agent-output && printf '{\"version\":1,\"agent\":\"auth\",\"summary\":\"Declares auth login route.\",\"routes\":[{\"id\":\"auth.route.login\",\"path\":\"/login\",\"component\":\"LoginPage\",\"priority\":10}]}' > agent-output/manifest.json"
+    task: "Declare the auth login route."
+    owns:
+      - "src/features/auth/**"
+    forbidden:
+      - "src/generated/**"
+
+  billing:
+    adapter: "generic"
+    command: "mkdir -p agent-output && printf '{\"version\":1,\"agent\":\"billing\",\"summary\":\"Declares billing invoices route.\",\"routes\":[{\"id\":\"billing.route.invoices\",\"path\":\"/billing/invoices\",\"component\":\"BillingInvoicesPage\",\"priority\":40}]}' > agent-output/manifest.json"
+    task: "Declare the billing invoices route."
+    owns:
+      - "src/features/billing/**"
+    forbidden:
+      - "src/generated/**"
