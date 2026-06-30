@@ -1,0 +1,12 @@
+version: 1
+
+domains: {}
+
+protected:
+  - ".agentx/**"
+  - "contracts/**"
+  - "src/generated/**"
+  - "package.json"
+  - "package-lock.json"
+  - "pnpm-lock.yaml"
+  - "yarn.lock"

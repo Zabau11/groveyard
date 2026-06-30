@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { initAgentx } from "./commands/init.js";
 
 const program = new Command();
 
@@ -12,8 +13,23 @@ program
 program
   .command("init")
   .description("Initialize AgentX metadata in the current repository.")
-  .action(() => {
-    console.log("agentx init: not implemented yet");
+  .action(async () => {
+    const result = await initAgentx(process.cwd());
+
+    console.log("Initialized AgentX metadata.");
+    if (result.created.length > 0) {
+      console.log("\nCreated:");
+      for (const path of result.created) {
+        console.log(`  - ${path}`);
+      }
+    }
+
+    if (result.skipped.length > 0) {
+      console.log("\nAlready existed:");
+      for (const path of result.skipped) {
+        console.log(`  - ${path}`);
+      }
+    }
   });
 
 program
