@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { initAgentx } from "./commands/init.js";
+import { validatePlanFile } from "./commands/validate-plan.js";
 
 const program = new Command();
 
@@ -36,8 +37,21 @@ program
   .command("validate-plan")
   .argument("<plan>", "Path to a task-plan.yml file")
   .description("Validate an AgentX task plan.")
-  .action((plan: string) => {
-    console.log(`agentx validate-plan: not implemented yet (${plan})`);
+  .action(async (plan: string) => {
+    const result = await validatePlanFile(plan, process.cwd());
+    const agentCount = Object.keys(result.plan.agents).length;
+
+    console.log(`Task plan is valid: ${plan}`);
+    console.log(`Run: ${result.plan.runId}`);
+    console.log(`Base branch: ${result.plan.baseBranch}`);
+    console.log(`Agents: ${agentCount}`);
+
+    if (result.warnings.length > 0) {
+      console.log("\nWarnings:");
+      for (const warning of result.warnings) {
+        console.log(`  - ${warning}`);
+      }
+    }
   });
 
 program

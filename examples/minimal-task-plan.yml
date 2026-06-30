@@ -1,0 +1,42 @@
+version: 1
+runId: "example-two-agents"
+baseBranch: "main"
+
+verify:
+  - "npm run typecheck"
+
+protected:
+  - ".agentx/**"
+  - "src/generated/**"
+  - "contracts/**"
+  - "package.json"
+  - "package-lock.json"
+
+agents:
+  auth:
+    adapter: "generic"
+    command: "echo auth agent placeholder"
+    task: "Implement password reset flow."
+    owns:
+      - "src/features/auth/**"
+      - "tests/features/auth/**"
+    mayRead:
+      - "src/core/**"
+      - "contracts/**"
+    forbidden:
+      - "src/features/billing/**"
+      - "src/generated/**"
+
+  billing:
+    adapter: "generic"
+    command: "echo billing agent placeholder"
+    task: "Add invoice download page."
+    owns:
+      - "src/features/billing/**"
+      - "tests/features/billing/**"
+    mayRead:
+      - "src/core/**"
+      - "contracts/**"
+    forbidden:
+      - "src/features/auth/**"
+      - "src/generated/**"
