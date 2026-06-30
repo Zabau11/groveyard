@@ -50,12 +50,12 @@ adapters:
 
   claude:
     type: "shell"
-    commandTemplate: "claude -p \"$(cat {{taskFile}})\""
+    commandTemplate: 'claude -p "$(cat {{taskFile}})"'
     description: "Runs Claude Code with the generated task file as the prompt."
 
   cursor:
     type: "shell"
-    commandTemplate: "cursor-agent -p \"$(cat {{taskFile}})\""
+    commandTemplate: 'cursor-agent -p "$(cat {{taskFile}})"'
     description: "Example Cursor agent command template; adjust to your local Cursor agent CLI."
 `,
   "ownership.yml": `version: 1

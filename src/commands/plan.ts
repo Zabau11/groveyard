@@ -66,7 +66,7 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
     baseBranch: "main",
     verify: analysis.verify,
     protected: protectedPaths,
-    generators: {},
+    generators: inferGenerators(analysis),
     agents,
   };
 
@@ -113,8 +113,25 @@ function buildRationale(goal: string, modules: ModuleCandidate[], analysis: Repo
   if (analysis.verify.length > 0) {
     rationale.push("Copied detected verification commands from repository analysis.");
   }
+  const generators = inferGenerators(analysis);
+  if (generators.routes) {
+    rationale.push(`Enabled route generation at ${generators.routes.output}.`);
+  }
 
   return rationale;
+}
+
+function inferGenerators(analysis: RepoAnalysis): TaskPlan["generators"] {
+  const generatedRoutes = analysis.sharedFiles.find((file) => file.endsWith("src/generated/routes.ts") || file === "src/generated/routes.ts");
+  if (!generatedRoutes) {
+    return {};
+  }
+
+  return {
+    routes: {
+      output: generatedRoutes,
+    },
+  };
 }
 
 function createRunId(goal: string): string {

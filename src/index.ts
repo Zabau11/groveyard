@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { analyzeRepository } from "./commands/analyze.js";
 import { detectAutoAdapter, listAdapters } from "./commands/adapters.js";
+import { bootstrapRepository } from "./commands/bootstrap.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
@@ -60,6 +61,31 @@ program
     }
     console.log(`Shared files: ${analysis.sharedFiles.length}`);
     console.log("Wrote: .agentx/analysis.json");
+  });
+
+program
+  .command("bootstrap")
+  .description("Create a minimal TypeScript app skeleton with AgentX-friendly ownership lanes.")
+  .action(async () => {
+    const result = await bootstrapRepository(process.cwd());
+
+    console.log("Bootstrap complete.");
+    console.log(`Created: ${result.created.length}`);
+    for (const path of result.created) {
+      console.log(`- ${path}`);
+    }
+    if (result.skipped.length > 0) {
+      console.log(`Skipped existing: ${result.skipped.length}`);
+      for (const path of result.skipped) {
+        console.log(`- ${path}`);
+      }
+    }
+    if (result.needsInstall) {
+      console.log("Dependency install needed before verification: npm install");
+    }
+    if (result.created.length > 0) {
+      console.log("Next: install dependencies, commit the scaffold, then run agentx start.");
+    }
   });
 
 program
@@ -138,13 +164,33 @@ program
   .command("start")
   .argument("<goal...>", "Goal to plan, run, compose, verify, and report")
   .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--bootstrap", "Create a minimal TypeScript app skeleton before planning")
   .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
   .option("--no-compose", "Skip composition")
   .option("--no-verify", "Skip verification")
   .option("--no-report", "Skip report generation")
   .description("Run the one-command AgentX flow from goal to report.")
-  .action(async (goalParts: string[], options: { adapter: string; out: string; compose: boolean; verify: boolean; report: boolean }) => {
+  .action(async (goalParts: string[], options: { adapter: string; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean }) => {
     const goal = goalParts.join(" ");
+    let skipVerifyReason: string | undefined;
+    if (options.bootstrap) {
+      const bootstrap = await bootstrapRepository(process.cwd());
+      console.log(`Bootstrap complete: created=${bootstrap.created.length}, skipped=${bootstrap.skipped.length}`);
+      if (bootstrap.created.length > 0) {
+        console.log("");
+        console.log("Bootstrap created new files. Commit the scaffold before running agents so AgentX worktrees can use it as the base.");
+        console.log("Next:");
+        console.log("- npm install");
+        console.log("- git add . && git commit -m \"bootstrap app\"");
+        console.log(`- agentx start "${goal}" --adapter ${options.adapter}`);
+        return;
+      }
+      if (bootstrap.needsInstall) {
+        skipVerifyReason = "Skipping verification because dependencies are not installed yet. Run npm install before verifying.";
+      }
+      console.log("");
+    }
+
     const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
 
     console.log(`Draft task plan generated: ${plan.path}`);
@@ -175,13 +221,16 @@ program
     console.log(`Branch: ${composition.branch}`);
     console.log(`Workspace: ${composition.workspacePath}`);
 
-    if (options.verify) {
+    if (options.verify && !skipVerifyReason) {
       console.log("");
       const verification = await verifyRun(run.runId, process.cwd());
       console.log(`Verification complete: ${verification.status}`);
       for (const command of verification.commands) {
         console.log(`- ${command.status}: ${command.command} (${command.durationMs}ms)`);
       }
+    } else if (skipVerifyReason) {
+      console.log("");
+      console.log(skipVerifyReason);
     }
 
     if (options.report) {
