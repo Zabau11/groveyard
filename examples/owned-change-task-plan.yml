@@ -11,7 +11,7 @@ protected:
 agents:
   auth:
     adapter: "generic"
-    command: "mkdir -p src/features/auth && printf 'export const passwordReset = true;\\n' > src/features/auth/password-reset.ts"
+    command: "mkdir -p src/features/auth agent-output && printf 'export const passwordReset = true;\\n' > src/features/auth/password-reset.ts && printf '{\"version\":1,\"agent\":\"auth\",\"summary\":\"Created password reset module.\",\"exports\":[{\"id\":\"auth.export.passwordReset\",\"symbol\":\"passwordReset\",\"from\":\"src/features/auth/password-reset\"}]}\\n' > agent-output/manifest.json"
     task: "Create an owned auth file."
     owns:
       - "src/features/auth/**"

@@ -1,9 +1,11 @@
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { execa, type ExecaError } from "execa";
+import { execa } from "execa";
 import { validatePlanFile } from "./validate-plan.js";
 import { renderAgentTask, validateChangedFiles } from "../validation/ownership.js";
 import type { TaskPlan } from "../schemas/task-plan.js";
+import { findDuplicateManifestIds, validateManifestFile } from "../validation/manifests.js";
+import type { AgentManifest } from "../schemas/agent-manifest.js";
 
 type AgentRunStatus = "accepted" | "rejected" | "failed";
 
@@ -15,6 +17,10 @@ type AgentRunSummary = {
   workspacePath: string;
   changedFiles: string[];
   violations: string[];
+  manifestValidation: {
+    valid: boolean;
+    errors: string[];
+  };
   logPath: string;
   patchPath: string;
   manifestPath?: string;
@@ -48,6 +54,8 @@ export async function runPlanFile(planPath: string, cwd: string): Promise<RunSum
   for (const [agentName] of Object.entries(plan.agents)) {
     agents.push(await runAgent(plan, agentName, cwd, runRoot, worktreeRoot));
   }
+
+  await applyDuplicateManifestIdRejections(agents, runRoot);
 
   const status = agents.some((agent) => agent.status === "failed")
     ? "failed"
@@ -120,8 +128,16 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
     await copyFile(sourceManifestPath, manifestPath);
   }
 
+  const manifestValidation = hasManifest
+    ? await validateManifestFile(manifestPath, agentName)
+    : {
+        valid: false,
+        errors: ["Missing required agent-output/manifest.json."],
+      };
+
   const ownership = validateChangedFiles(plan, agentName, changedFiles);
-  let status: AgentRunStatus = ownership.accepted ? "accepted" : "rejected";
+  const violations = [...ownership.violations, ...manifestValidation.errors];
+  let status: AgentRunStatus = ownership.accepted && manifestValidation.valid ? "accepted" : "rejected";
   if (exitCode !== 0) {
     status = "failed";
   }
@@ -133,7 +149,11 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
     exitCode,
     workspacePath,
     changedFiles,
-    violations: ownership.violations,
+    violations,
+    manifestValidation: {
+      valid: manifestValidation.valid,
+      errors: manifestValidation.errors,
+    },
     logPath,
     patchPath,
     manifestPath: hasManifest ? manifestPath : undefined,
@@ -142,6 +162,44 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
   await writeFile(join(agentRunRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 
   return summary;
+}
+
+async function applyDuplicateManifestIdRejections(agents: AgentRunSummary[], runRoot: string): Promise<void> {
+  const acceptedManifests = new Map<string, AgentManifest>();
+
+  for (const agent of agents) {
+    if (agent.status !== "accepted" || !agent.manifestPath) {
+      continue;
+    }
+
+    const validation = await validateManifestFile(agent.manifestPath, agent.agent);
+    if (validation.valid && validation.manifest) {
+      acceptedManifests.set(agent.agent, validation.manifest);
+    }
+  }
+
+  const duplicates = findDuplicateManifestIds(acceptedManifests);
+  if (duplicates.size === 0) {
+    return;
+  }
+
+  for (const [duplicateKey, duplicateAgents] of duplicates.entries()) {
+    for (const agentName of duplicateAgents) {
+      const agent = agents.find((candidate) => candidate.agent === agentName);
+      if (!agent) {
+        continue;
+      }
+
+      agent.status = "rejected";
+      agent.violations.push(`Duplicate manifest ID "${duplicateKey}" is also declared by: ${duplicateAgents.filter((name) => name !== agentName).join(", ")}.`);
+      agent.manifestValidation.valid = false;
+      agent.manifestValidation.errors.push(`Duplicate manifest ID "${duplicateKey}".`);
+    }
+  }
+
+  for (const agent of agents) {
+    await writeFile(join(runRoot, "agents", agent.agent, "summary.json"), `${JSON.stringify(agent, null, 2)}\n`);
+  }
 }
 
 async function ensureGitRepository(cwd: string): Promise<void> {
@@ -187,12 +245,12 @@ async function getChangedFiles(workspacePath: string): Promise<string[]> {
 
 async function exportPatch(workspacePath: string): Promise<string> {
   await execa("git", ["add", "--intent-to-add", "."], { cwd: workspacePath });
-  const result = await execa("git", ["diff", "--binary", "HEAD", "--", ".", ":(exclude).agentx-task.md"], { cwd: workspacePath });
+  const result = await execa("git", ["diff", "--binary", "HEAD", "--", ".", ":(exclude).agentx-task.md", ":(exclude)agent-output/**"], { cwd: workspacePath });
   return result.stdout.length > 0 ? `${result.stdout}\n` : "";
 }
 
 function addAgentChangedFile(files: Set<string>, filePath: string): void {
-  if (filePath === ".agentx-task.md") {
+  if (filePath === ".agentx-task.md" || filePath.startsWith("agent-output/")) {
     return;
   }
 

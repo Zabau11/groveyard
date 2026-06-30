@@ -15,7 +15,7 @@ protected:
 agents:
   auth:
     adapter: "generic"
-    command: "echo auth agent placeholder"
+    command: "mkdir -p agent-output && printf '{\"version\":1,\"agent\":\"auth\",\"summary\":\"Auth placeholder output.\"}\\n' > agent-output/manifest.json"
     task: "Implement password reset flow."
     owns:
       - "src/features/auth/**"
@@ -29,7 +29,7 @@ agents:
 
   billing:
     adapter: "generic"
-    command: "echo billing agent placeholder"
+    command: "mkdir -p agent-output && printf '{\"version\":1,\"agent\":\"billing\",\"summary\":\"Billing placeholder output.\"}\\n' > agent-output/manifest.json"
     task: "Add invoice download page."
     owns:
       - "src/features/billing/**"
