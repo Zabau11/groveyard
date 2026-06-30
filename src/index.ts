@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
 import { runPlanFile } from "./commands/run.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
@@ -88,8 +89,25 @@ program
   .command("compose")
   .requiredOption("--run <runId>", "Run ID to compose")
   .description("Compose accepted agent patches into an integration result.")
-  .action((options: { run: string }) => {
-    console.log(`agentx compose: not implemented yet (${options.run})`);
+  .action(async (options: { run: string }) => {
+    const summary = await composeRun(options.run, process.cwd());
+
+    console.log(`Composition complete: ${summary.runId}`);
+    console.log(`Status: ${summary.status}`);
+    console.log(`Branch: ${summary.branch}`);
+    console.log(`Workspace: ${summary.workspacePath}`);
+    console.log("");
+    console.log(`Applied: ${summary.applied.length}`);
+    for (const applied of summary.applied) {
+      console.log(`- ${applied.agent}: ${applied.changedFiles.length} changed files`);
+    }
+    if (summary.skipped.length > 0) {
+      console.log("");
+      console.log(`Skipped: ${summary.skipped.length}`);
+      for (const skipped of summary.skipped) {
+        console.log(`- ${skipped.agent}: ${skipped.reason}`);
+      }
+    }
   });
 
 program
