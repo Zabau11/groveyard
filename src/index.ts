@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { analyzeRepository } from "./commands/analyze.js";
-import { listAdapters } from "./commands/adapters.js";
+import { detectAutoAdapter, listAdapters } from "./commands/adapters.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
@@ -64,8 +64,9 @@ program
 
 program
   .command("adapters")
+  .option("--detect", "Show which adapter auto would select")
   .description("List configured AgentX adapter presets.")
-  .action(async () => {
+  .action(async (options: { detect?: boolean }) => {
     const adapters = await listAdapters(process.cwd());
     if (adapters.length === 0) {
       console.log("No adapters configured.");
@@ -80,6 +81,15 @@ program
       }
       if (adapter.description) {
         console.log(`  ${adapter.description}`);
+      }
+    }
+
+    if (options.detect) {
+      console.log("");
+      const detection = await detectAutoAdapter(process.cwd());
+      console.log(`Auto selection: ${detection.selected ?? "none"}`);
+      for (const candidate of detection.candidates) {
+        console.log(`- ${candidate.name}: ${candidate.available ? "available" : "missing"}${candidate.command ? ` (${candidate.command})` : ""}`);
       }
     }
   });

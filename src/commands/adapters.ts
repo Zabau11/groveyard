@@ -27,6 +27,15 @@ export type AdapterListItem = {
   detect?: string[];
 };
 
+export type AdapterDetection = {
+  selected?: string;
+  candidates: Array<{
+    name: string;
+    command?: string;
+    available: boolean;
+  }>;
+};
+
 type ResolveCommandInput = {
   agentName: string;
   agent: AgentPlan;
@@ -45,6 +54,33 @@ export async function listAdapters(cwd: string): Promise<AdapterListItem[]> {
       detect: adapter.detect,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function detectAutoAdapter(cwd: string): Promise<AdapterDetection> {
+  const config = await loadAgentxConfig(cwd);
+  const auto = config.adapters.auto;
+  if (!auto) {
+    throw new Error('No "auto" adapter configured in .agentx/config.yml.');
+  }
+
+  const candidates = auto.detect ?? ["codex", "claude", "cursor"];
+  const results: AdapterDetection["candidates"] = [];
+
+  for (const candidateName of candidates) {
+    const candidate = config.adapters[candidateName];
+    const command = commandNameFromTemplate(candidate?.commandTemplate);
+    const available = await commandExists(command);
+    results.push({
+      name: candidateName,
+      command,
+      available,
+    });
+  }
+
+  return {
+    selected: results.find((candidate) => candidate.available)?.name,
+    candidates: results,
+  };
 }
 
 export async function resolveAgentCommand(cwd: string, input: ResolveCommandInput): Promise<string> {
@@ -72,7 +108,7 @@ export async function resolveAgentCommand(cwd: string, input: ResolveCommandInpu
 }
 
 async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: AdapterConfig, agentName: string): Promise<AdapterConfig> {
-  const candidates = adapter.detect ?? ["codex", "claude", "cursor", "noop"];
+  const candidates = adapter.detect ?? ["codex", "claude", "cursor"];
 
   for (const candidateName of candidates) {
     const candidate = adapters[candidateName];
@@ -80,16 +116,12 @@ async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: A
       continue;
     }
 
-    if (candidateName === "noop") {
-      return candidate;
-    }
-
     if (await commandExists(commandNameFromTemplate(candidate.commandTemplate))) {
       return candidate;
     }
   }
 
-  throw new Error(`Could not auto-detect an installed agent command for "${agentName}". Configure .agentx/config.yml or use --adapter noop.`);
+  throw new Error(`Could not auto-detect an installed agent command for "${agentName}". Configure .agentx/config.yml, install Codex/Claude/Cursor CLI, or run with --adapter noop for a local smoke test.`);
 }
 
 function commandNameFromTemplate(template: string | undefined): string | undefined {

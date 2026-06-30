@@ -32,8 +32,7 @@ adapters:
       - "codex"
       - "claude"
       - "cursor"
-      - "noop"
-    description: "Automatically picks the first available adapter command, falling back to noop."
+    description: "Automatically picks the first available real agent command."
 
   generic:
     type: "shell"
