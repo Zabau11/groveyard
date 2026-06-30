@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { analyzeRepository } from "./commands/analyze.js";
+import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
 import { generateReport } from "./commands/report.js";
@@ -36,6 +38,26 @@ program
         console.log(`  - ${path}`);
       }
     }
+  });
+
+program
+  .command("analyze")
+  .description("Analyze the current repository and write .agentx/analysis.json.")
+  .action(async () => {
+    const analysis = await analyzeRepository(process.cwd());
+
+    console.log("Repository analysis complete.");
+    console.log(`Package manager: ${analysis.packageManager}`);
+    console.log(`Verify commands: ${analysis.verify.length}`);
+    for (const command of analysis.verify) {
+      console.log(`- ${command}`);
+    }
+    console.log(`Modules: ${analysis.modules.length}`);
+    for (const module of analysis.modules) {
+      console.log(`- ${module.kind}: ${module.path}`);
+    }
+    console.log(`Shared files: ${analysis.sharedFiles.length}`);
+    console.log("Wrote: .agentx/analysis.json");
   });
 
 program
@@ -120,6 +142,27 @@ program
       console.log(
         `- ${run.runId}: ${run.status}, agents=${run.agents}, accepted=${run.accepted}, rejected=${run.rejected}, failed=${run.failed}, composed=${run.composed ? "yes" : "no"}, verification=${run.verified}, report=${run.reported ? "yes" : "no"}`,
       );
+    }
+  });
+
+program
+  .command("clean")
+  .requiredOption("--run <runId>", "Run ID to clean")
+  .description("Remove run artifacts, worktrees, report copies, and the integration branch for a run.")
+  .action(async (options: { run: string }) => {
+    const result = await cleanRun(options.run, process.cwd());
+
+    console.log(`Cleaned run: ${result.runId}`);
+    console.log(`Removed worktrees: ${result.removedWorktrees.length}`);
+    for (const worktree of result.removedWorktrees) {
+      console.log(`- ${worktree}`);
+    }
+    console.log(`Removed paths: ${result.removedPaths.length}`);
+    for (const path of result.removedPaths) {
+      console.log(`- ${path}`);
+    }
+    if (result.deletedBranch) {
+      console.log(`Deleted branch: ${result.deletedBranch}`);
     }
   });
 

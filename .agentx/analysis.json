@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "packageManager": "npm",
+  "verify": [
+    "npm run typecheck",
+    "npm run build"
+  ],
+  "modules": [
+    {
+      "name": "src",
+      "path": "src",
+      "kind": "source"
+    }
+  ],
+  "sharedFiles": [
+    "package-lock.json",
+    "package.json",
+    "src/index.ts",
+    "tsconfig.json"
+  ],
+  "protected": [
+    ".agentx/**",
+    "contracts/**",
+    "src/generated/**",
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lockb"
+  ],
+  "notes": [
+    "Shared files were detected. Normal agents should not edit these directly unless explicitly approved."
+  ]
+}
