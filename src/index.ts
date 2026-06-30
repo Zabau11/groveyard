@@ -5,6 +5,7 @@ import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
 import { runPlanFile } from "./commands/run.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
+import { verifyRun } from "./commands/verify.js";
 
 const program = new Command();
 
@@ -114,8 +115,18 @@ program
   .command("verify")
   .requiredOption("--run <runId>", "Run ID to verify")
   .description("Run configured verification commands for a composed run.")
-  .action((options: { run: string }) => {
-    console.log(`agentx verify: not implemented yet (${options.run})`);
+  .action(async (options: { run: string }) => {
+    const summary = await verifyRun(options.run, process.cwd());
+
+    console.log(`Verification complete: ${summary.runId}`);
+    console.log(`Status: ${summary.status}`);
+    console.log(`Workspace: ${summary.workspacePath}`);
+    if (summary.commands.length > 0) {
+      console.log("");
+      for (const command of summary.commands) {
+        console.log(`- ${command.status}: ${command.command} (${command.durationMs}ms)`);
+      }
+    }
   });
 
 program

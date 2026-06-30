@@ -2,6 +2,9 @@ version: 1
 runId: "example-owned-change"
 baseBranch: "main"
 
+verify:
+  - "test -f src/features/auth/password-reset.ts"
+
 protected:
   - ".agentx/**"
   - "src/generated/**"
