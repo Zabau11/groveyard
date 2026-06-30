@@ -5,6 +5,7 @@ import { analyzeRepository } from "./commands/analyze.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
+import { createDraftPlan } from "./commands/plan.js";
 import { generateReport } from "./commands/report.js";
 import { runPlanFile } from "./commands/run.js";
 import { getRunStatus, listRunStatuses } from "./commands/status.js";
@@ -78,6 +79,24 @@ program
       for (const warning of result.warnings) {
         console.log(`  - ${warning}`);
       }
+    }
+  });
+
+program
+  .command("plan")
+  .argument("<goal...>", "Goal to turn into a draft task plan")
+  .option("--out <path>", "Output path", ".agentx/task-plan.yml")
+  .description("Generate a conservative draft task plan from repository analysis.")
+  .action(async (goalParts: string[], options: { out: string }) => {
+    const goal = goalParts.join(" ");
+    const result = await createDraftPlan(goal, process.cwd(), { out: options.out });
+
+    console.log(`Draft task plan generated: ${result.path}`);
+    console.log(`Run: ${result.runId}`);
+    console.log(`Agents: ${result.agentCount}`);
+    console.log("");
+    for (const line of result.rationale) {
+      console.log(`- ${line}`);
     }
   });
 

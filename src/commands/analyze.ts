@@ -2,15 +2,15 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import fg from "fast-glob";
 
-type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "unknown";
+export type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "unknown";
 
-type ModuleCandidate = {
+export type ModuleCandidate = {
   name: string;
   path: string;
   kind: "feature" | "package" | "app" | "source";
 };
 
-type RepoAnalysis = {
+export type RepoAnalysis = {
   version: 1;
   packageManager: PackageManager;
   verify: string[];
@@ -120,7 +120,12 @@ async function detectModules(cwd: string): Promise<ModuleCandidate[]> {
   candidates.push(...(await childDirectories(cwd, "apps")).map((name) => ({ name, path: `apps/${name}`, kind: "app" as const })));
 
   if (candidates.length === 0 && (await pathExists(join(cwd, "src")))) {
-    candidates.push({ name: "src", path: "src", kind: "source" });
+    const sourceChildren = await childDirectories(cwd, "src");
+    if (sourceChildren.length > 0) {
+      candidates.push(...sourceChildren.map((name) => ({ name, path: `src/${name}`, kind: "source" as const })));
+    } else {
+      candidates.push({ name: "src", path: "src", kind: "source" });
+    }
   }
 
   return candidates.sort((left, right) => left.path.localeCompare(right.path));
