@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
+import { generateReport } from "./commands/report.js";
 import { runPlanFile } from "./commands/run.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 import { verifyRun } from "./commands/verify.js";
@@ -133,8 +134,12 @@ program
   .command("report")
   .requiredOption("--run <runId>", "Run ID to report on")
   .description("Generate or print a Markdown report for a run.")
-  .action((options: { run: string }) => {
-    console.log(`agentx report: not implemented yet (${options.run})`);
+  .action(async (options: { run: string }) => {
+    const result = await generateReport(options.run, process.cwd());
+
+    console.log(`Report generated: ${result.runId}`);
+    console.log(`Run report: ${result.reportPath}`);
+    console.log(`Report copy: ${result.mirrorPath}`);
   });
 
 program.parseAsync(process.argv).catch((error: unknown) => {
