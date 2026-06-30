@@ -6,6 +6,7 @@ import { validatePlanFile } from "./validate-plan.js";
 import type { TaskPlan } from "../schemas/task-plan.js";
 
 type CreatePlanOptions = {
+  adapter?: string;
   out?: string;
 };
 
@@ -24,20 +25,39 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
   }
 
   const runId = createRunId(goal);
+  const adapter = options.adapter ?? "auto";
   const protectedPaths = unique([...analysis.protected, ...analysis.sharedFiles]);
   const agents = Object.fromEntries(
-    selectedModules.map((module) => [
-      sanitizeAgentName(module.name),
-      {
+    selectedModules.map((module) => {
+      const agentName = sanitizeAgentName(module.name);
+      const agent = {
         adapter: "generic",
-        command: `mkdir -p agent-output && printf '{"version":1,"agent":"${sanitizeAgentName(module.name)}","summary":"Draft placeholder output for ${sanitizeJsonString(module.name)}."}\\n' > agent-output/manifest.json`,
-        task: `${goal}\n\nFocus only on ${module.path}. Replace this placeholder command with a real agent command before running.`,
+        task: `${goal}\n\nFocus only on ${module.path}. Emit agent-output/manifest.json when complete.`,
         owns: [`${module.path}/**`],
         mayRead: ["README.md", "IDEA.md", "contracts/**", "src/core/**"],
         outputs: [],
         forbidden: unique([...protectedPaths, ...selectedModules.filter((candidate) => candidate.path !== module.path).map((candidate) => `${candidate.path}/**`)]),
-      },
-    ]),
+      };
+
+      if (adapter === "generic") {
+        return [
+          agentName,
+          {
+            ...agent,
+            adapter,
+            command: `mkdir -p agent-output && printf '{"version":1,"agent":"${agentName}","summary":"Draft placeholder output for ${sanitizeJsonString(module.name)}."}\\n' > agent-output/manifest.json`,
+          },
+        ];
+      }
+
+      return [
+        agentName,
+        {
+          ...agent,
+          adapter,
+        },
+      ];
+    }),
   );
 
   const plan: TaskPlan = {
@@ -60,7 +80,7 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
     runId,
     path: fullOutputPath,
     agentCount: selectedModules.length,
-    rationale: buildRationale(goal, selectedModules, analysis),
+    rationale: buildRationale(goal, selectedModules, analysis, adapter),
   };
 }
 
@@ -82,8 +102,9 @@ function selectModules(goal: string, modules: ModuleCandidate[]): ModuleCandidat
   return modules.slice(0, 3);
 }
 
-function buildRationale(goal: string, modules: ModuleCandidate[], analysis: RepoAnalysis): string[] {
+function buildRationale(goal: string, modules: ModuleCandidate[], analysis: RepoAnalysis, adapter: string): string[] {
   const rationale = [`Generated a conservative draft plan for: ${goal}`];
+  rationale.push(`Using adapter: ${adapter}.`);
   rationale.push(`Selected ${modules.length} module lane${modules.length === 1 ? "" : "s"}: ${modules.map((module) => module.path).join(", ")}.`);
   if (analysis.sharedFiles.length > 0) {
     rationale.push("Protected detected shared files so normal agents cannot edit them directly.");
@@ -101,7 +122,7 @@ function createRunId(goal: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-  const suffix = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const suffix = new Date().toISOString().replaceAll(/[-:]/g, "").slice(0, 15);
 
   return `${slug || "agentx-run"}-${suffix}`;
 }

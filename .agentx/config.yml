@@ -15,6 +15,15 @@ protected:
   - "yarn.lock"
 
 adapters:
+  auto:
+    type: "auto"
+    detect:
+      - "codex"
+      - "claude"
+      - "cursor"
+      - "noop"
+    description: "Automatically picks the first available adapter command, falling back to noop."
+
   generic:
     type: "shell"
     description: "Use the command field from each agent in the task plan."

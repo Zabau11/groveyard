@@ -108,11 +108,12 @@ program
 program
   .command("plan")
   .argument("<goal...>", "Goal to turn into a draft task plan")
+  .option("--adapter <name>", "Adapter preset to use", "auto")
   .option("--out <path>", "Output path", ".agentx/task-plan.yml")
   .description("Generate a conservative draft task plan from repository analysis.")
-  .action(async (goalParts: string[], options: { out: string }) => {
+  .action(async (goalParts: string[], options: { adapter: string; out: string }) => {
     const goal = goalParts.join(" ");
-    const result = await createDraftPlan(goal, process.cwd(), { out: options.out });
+    const result = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
 
     console.log(`Draft task plan generated: ${result.path}`);
     console.log(`Run: ${result.runId}`);
@@ -120,6 +121,63 @@ program
     console.log("");
     for (const line of result.rationale) {
       console.log(`- ${line}`);
+    }
+  });
+
+program
+  .command("start")
+  .argument("<goal...>", "Goal to plan, run, compose, verify, and report")
+  .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
+  .option("--no-compose", "Skip composition")
+  .option("--no-verify", "Skip verification")
+  .option("--no-report", "Skip report generation")
+  .description("Run the one-command AgentX flow from goal to report.")
+  .action(async (goalParts: string[], options: { adapter: string; out: string; compose: boolean; verify: boolean; report: boolean }) => {
+    const goal = goalParts.join(" ");
+    const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
+
+    console.log(`Draft task plan generated: ${plan.path}`);
+    console.log(`Run: ${plan.runId}`);
+    console.log(`Agents: ${plan.agentCount}`);
+    for (const line of plan.rationale) {
+      console.log(`- ${line}`);
+    }
+
+    console.log("");
+    const run = await runPlanFile(plan.path, process.cwd());
+    console.log(`Run complete: ${run.runId}`);
+    console.log(`Status: ${run.status}`);
+    for (const agent of run.agents) {
+      console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
+      for (const violation of agent.violations) {
+        console.log(`  - ${violation}`);
+      }
+    }
+
+    if (!options.compose) {
+      return;
+    }
+
+    console.log("");
+    const composition = await composeRun(run.runId, process.cwd());
+    console.log(`Composition complete: ${composition.status}`);
+    console.log(`Branch: ${composition.branch}`);
+    console.log(`Workspace: ${composition.workspacePath}`);
+
+    if (options.verify) {
+      console.log("");
+      const verification = await verifyRun(run.runId, process.cwd());
+      console.log(`Verification complete: ${verification.status}`);
+      for (const command of verification.commands) {
+        console.log(`- ${command.status}: ${command.command} (${command.durationMs}ms)`);
+      }
+    }
+
+    if (options.report) {
+      console.log("");
+      const report = await generateReport(run.runId, process.cwd());
+      console.log(`Report generated: ${report.reportPath}`);
     }
   });
 
