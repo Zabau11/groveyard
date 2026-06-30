@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.agentx/runs/
+.agentx/worktrees/
+.DS_Store
