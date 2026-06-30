@@ -1,0 +1,19 @@
+version: 1
+runId: "example-owned-change"
+baseBranch: "main"
+
+protected:
+  - ".agentx/**"
+  - "src/generated/**"
+  - "package.json"
+  - "package-lock.json"
+
+agents:
+  auth:
+    adapter: "generic"
+    command: "mkdir -p src/features/auth && printf 'export const passwordReset = true;\\n' > src/features/auth/password-reset.ts"
+    task: "Create an owned auth file."
+    owns:
+      - "src/features/auth/**"
+    forbidden:
+      - "src/generated/**"

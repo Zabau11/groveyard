@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { initAgentx } from "./commands/init.js";
+import { runPlanFile } from "./commands/run.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 
 const program = new Command();
@@ -58,8 +59,21 @@ program
   .command("run")
   .argument("<plan>", "Path to a task-plan.yml file")
   .description("Run agents from a task plan in isolated worktrees.")
-  .action((plan: string) => {
-    console.log(`agentx run: not implemented yet (${plan})`);
+  .action(async (plan: string) => {
+    const summary = await runPlanFile(plan, process.cwd());
+
+    console.log(`Run complete: ${summary.runId}`);
+    console.log(`Status: ${summary.status}`);
+    console.log(`Run directory: ${summary.runPath}`);
+    console.log("");
+    for (const agent of summary.agents) {
+      console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
+      if (agent.violations.length > 0) {
+        for (const violation of agent.violations) {
+          console.log(`  - ${violation}`);
+        }
+      }
+    }
   });
 
 program
