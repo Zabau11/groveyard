@@ -5,6 +5,7 @@ import { composeRun } from "./commands/compose.js";
 import { initAgentx } from "./commands/init.js";
 import { generateReport } from "./commands/report.js";
 import { runPlanFile } from "./commands/run.js";
+import { getRunStatus, listRunStatuses } from "./commands/status.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 import { verifyRun } from "./commands/verify.js";
 
@@ -83,8 +84,43 @@ program
   .command("status")
   .option("--run <runId>", "Run ID to inspect")
   .description("Show run status.")
-  .action((options: { run?: string }) => {
-    console.log(`agentx status: not implemented yet${options.run ? ` (${options.run})` : ""}`);
+  .action(async (options: { run?: string }) => {
+    if (options.run) {
+      const detail = await getRunStatus(options.run, process.cwd());
+      console.log(`Run: ${detail.run.runId}`);
+      console.log(`Status: ${detail.run.status}`);
+      console.log(`Base branch: ${detail.run.baseBranch}`);
+      console.log(`Agents: ${detail.run.agents.length}`);
+      console.log("");
+      for (const agent of detail.run.agents) {
+        console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
+        for (const violation of agent.violations) {
+          console.log(`  - ${violation}`);
+        }
+      }
+      console.log("");
+      console.log(`Composition: ${detail.composition ? detail.composition.status : "not_run"}`);
+      if (detail.composition) {
+        console.log(`Branch: ${detail.composition.branch}`);
+        console.log(`Workspace: ${detail.composition.workspacePath}`);
+      }
+      console.log(`Verification: ${detail.verification ? detail.verification.status : "not_run"}`);
+      console.log(`Report: ${detail.reportExists ? "generated" : "not_run"}`);
+      return;
+    }
+
+    const runs = await listRunStatuses(process.cwd());
+    if (runs.length === 0) {
+      console.log("No AgentX runs found.");
+      return;
+    }
+
+    console.log("AgentX runs:");
+    for (const run of runs) {
+      console.log(
+        `- ${run.runId}: ${run.status}, agents=${run.agents}, accepted=${run.accepted}, rejected=${run.rejected}, failed=${run.failed}, composed=${run.composed ? "yes" : "no"}, verification=${run.verified}, report=${run.reported ? "yes" : "no"}`,
+      );
+    }
   });
 
 program
