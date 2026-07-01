@@ -20,7 +20,7 @@ export type RepoAnalysis = {
   notes: string[];
 };
 
-const ignoredDirectories = ["**/node_modules/**", "**/.git/**", "**/.agentx/**", "**/dist/**", "**/build/**"];
+const ignoredDirectories = ["**/node_modules/**", "**/.git/**", "**/.agentx/**", "**/dist/**", "**/build/**", "examples/**", "**/examples/**"];
 
 const defaultProtected = [".agentx/**", "contracts/**", "src/generated/**", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb"];
 

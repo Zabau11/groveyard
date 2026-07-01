@@ -8,7 +8,7 @@ import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
 import { initAgentx } from "./commands/init.js";
-import { createDraftPlan } from "./commands/plan.js";
+import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
 import { generateReport } from "./commands/report.js";
 import { runPlanFile } from "./commands/run.js";
 import { getRunStatus, listRunStatuses } from "./commands/status.js";
@@ -183,6 +183,77 @@ program
     for (const line of result.rationale) {
       console.log(`- ${line}`);
     }
+  });
+
+program
+  .command("preview")
+  .argument("<goal...>", "Goal to preview without running agents")
+  .option("--adapter <name>", "Adapter preset to use", "auto")
+  .description("Preview the AgentX orchestration plan without writing files or creating worktrees.")
+  .action(async (goalParts: string[], options: { adapter: string }) => {
+    const goal = goalParts.join(" ");
+    const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter });
+
+    console.log("AgentX preview");
+    console.log("");
+    console.log(`Goal: ${preview.goal}`);
+    console.log(`Run ID: ${preview.plan.runId}`);
+    console.log(`Base branch: ${preview.plan.baseBranch}`);
+    console.log("");
+
+    console.log("Agents");
+    for (const [agentName, agent] of Object.entries(preview.plan.agents)) {
+      console.log(`- ${agentName}`);
+      console.log(`  adapter: ${agent.adapter}`);
+      console.log(`  owns: ${agent.owns.join(", ")}`);
+      if (agent.mayRead.length > 0) {
+        console.log(`  may read: ${agent.mayRead.join(", ")}`);
+      }
+      if (agent.forbidden.length > 0) {
+        console.log(`  forbidden: ${agent.forbidden.slice(0, 6).join(", ")}${agent.forbidden.length > 6 ? ", ..." : ""}`);
+      }
+    }
+
+    console.log("");
+    console.log("Composition");
+    if (preview.plan.generators.routes) {
+      console.log(`- routes: generate ${preview.plan.generators.routes.output} from accepted manifests`);
+    } else {
+      console.log("- no generators detected");
+    }
+
+    console.log("");
+    console.log("Verification");
+    if (preview.plan.verify.length > 0) {
+      for (const command of preview.plan.verify) {
+        console.log(`- ${command}`);
+      }
+    } else {
+      console.log("- no verification commands detected");
+    }
+
+    console.log("");
+    console.log("Adapter");
+    if (options.adapter === "auto") {
+      try {
+        const detection = await detectAutoAdapter(process.cwd());
+        console.log(`- auto selection: ${detection.selected ?? "none"}`);
+        for (const candidate of detection.candidates) {
+          console.log(`- ${candidate.name}: ${candidate.available ? "available" : "missing"}${candidate.command ? ` (${candidate.command})` : ""}`);
+        }
+      } catch (error) {
+        console.log(`- auto detection unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } else {
+      console.log(`- ${options.adapter}`);
+    }
+
+    console.log("");
+    console.log("Notes");
+    for (const line of preview.rationale) {
+      console.log(`- ${line}`);
+    }
+    console.log("- Preview only. No files were written and no agents were run.");
   });
 
 program

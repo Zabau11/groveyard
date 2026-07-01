@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { analyzeRepository, type ModuleCandidate, type RepoAnalysis } from "./analyze.js";
 import { validatePlanFile } from "./validate-plan.js";
-import type { TaskPlan } from "../schemas/task-plan.js";
+import { taskPlanSchema, type TaskPlan } from "../schemas/task-plan.js";
 
 type CreatePlanOptions = {
   adapter?: string;
@@ -17,8 +17,38 @@ type CreatePlanResult = {
   rationale: string[];
 };
 
+export type DraftPlanPreview = {
+  goal: string;
+  plan: TaskPlan;
+  selectedModules: ModuleCandidate[];
+  analysis: RepoAnalysis;
+  adapter: string;
+  rationale: string[];
+};
+
+export async function previewDraftPlan(goal: string, cwd: string, options: Pick<CreatePlanOptions, "adapter"> = {}): Promise<DraftPlanPreview> {
+  return buildDraftPlan(goal, cwd, { adapter: options.adapter, writeAnalysis: false });
+}
+
 export async function createDraftPlan(goal: string, cwd: string, options: CreatePlanOptions = {}): Promise<CreatePlanResult> {
-  const analysis = await loadOrCreateAnalysis(cwd);
+  const draft = await buildDraftPlan(goal, cwd, { adapter: options.adapter, writeAnalysis: true });
+  const outputPath = options.out ?? join(".agentx", "task-plan.yml");
+  const fullOutputPath = join(cwd, outputPath);
+  await mkdir(join(cwd, ".agentx"), { recursive: true });
+  await writeFile(fullOutputPath, stringifyYaml(draft.plan));
+
+  await validatePlanFile(outputPath, cwd);
+
+  return {
+    runId: draft.plan.runId,
+    path: fullOutputPath,
+    agentCount: draft.selectedModules.length,
+    rationale: draft.rationale,
+  };
+}
+
+async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: string; writeAnalysis: boolean }): Promise<DraftPlanPreview> {
+  const analysis = await analyzeRepository(cwd, { write: options.writeAnalysis });
   const selectedModules = selectModules(goal, analysis.modules);
   if (selectedModules.length === 0) {
     throw new Error("No safe module boundaries found. Run agentx analyze and create a task plan manually.");
@@ -60,7 +90,7 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
     }),
   );
 
-  const plan: TaskPlan = {
+  const plan = taskPlanSchema.parse({
     version: 1,
     runId,
     baseBranch: "main",
@@ -68,25 +98,16 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
     protected: protectedPaths,
     generators: inferGenerators(analysis),
     agents,
-  };
-
-  const outputPath = options.out ?? join(".agentx", "task-plan.yml");
-  const fullOutputPath = join(cwd, outputPath);
-  await mkdir(join(cwd, ".agentx"), { recursive: true });
-  await writeFile(fullOutputPath, stringifyYaml(plan));
-
-  await validatePlanFile(outputPath, cwd);
+  });
 
   return {
-    runId,
-    path: fullOutputPath,
-    agentCount: selectedModules.length,
+    goal,
+    plan,
+    selectedModules,
+    analysis,
+    adapter,
     rationale: buildRationale(goal, selectedModules, analysis, adapter),
   };
-}
-
-async function loadOrCreateAnalysis(cwd: string): Promise<RepoAnalysis> {
-  return analyzeRepository(cwd);
 }
 
 function selectModules(goal: string, modules: ModuleCandidate[]): ModuleCandidate[] {
