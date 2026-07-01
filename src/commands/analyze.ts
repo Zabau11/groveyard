@@ -24,7 +24,11 @@ const ignoredDirectories = ["**/node_modules/**", "**/.git/**", "**/.agentx/**",
 
 const defaultProtected = [".agentx/**", "contracts/**", "src/generated/**", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb"];
 
-export async function analyzeRepository(cwd: string): Promise<RepoAnalysis> {
+type AnalyzeOptions = {
+  write?: boolean;
+};
+
+export async function analyzeRepository(cwd: string, options: AnalyzeOptions = {}): Promise<RepoAnalysis> {
   const packageManager = await detectPackageManager(cwd);
   const packageJson = await readPackageJson(cwd);
   const verify = detectVerifyCommands(packageManager, packageJson);
@@ -43,8 +47,10 @@ export async function analyzeRepository(cwd: string): Promise<RepoAnalysis> {
     notes,
   };
 
-  await mkdir(join(cwd, ".agentx"), { recursive: true });
-  await writeFile(join(cwd, ".agentx", "analysis.json"), `${JSON.stringify(analysis, null, 2)}\n`);
+  if (options.write !== false) {
+    await mkdir(join(cwd, ".agentx"), { recursive: true });
+    await writeFile(join(cwd, ".agentx", "analysis.json"), `${JSON.stringify(analysis, null, 2)}\n`);
+  }
 
   return analysis;
 }

@@ -6,6 +6,7 @@ import { detectAutoAdapter, listAdapters } from "./commands/adapters.js";
 import { bootstrapRepository } from "./commands/bootstrap.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
+import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
 import { initAgentx } from "./commands/init.js";
 import { createDraftPlan } from "./commands/plan.js";
 import { generateReport } from "./commands/report.js";
@@ -117,6 +118,30 @@ program
       for (const candidate of detection.candidates) {
         console.log(`- ${candidate.name}: ${candidate.available ? "available" : "missing"}${candidate.command ? ` (${candidate.command})` : ""}`);
       }
+    }
+  });
+
+program
+  .command("doctor")
+  .option("--strict", "Exit non-zero when warnings are present")
+  .description("Check whether the current repository is ready for AgentX.")
+  .action(async (options: { strict?: boolean }) => {
+    const report = await runDoctor(process.cwd());
+
+    console.log(`AgentX doctor: ${report.status}`);
+    for (const section of report.sections) {
+      console.log("");
+      console.log(section.title);
+      for (const check of section.checks) {
+        console.log(`${statusIcon(check.status)} ${check.label}: ${check.detail}`);
+        if (check.fix) {
+          console.log(`  fix: ${check.fix}`);
+        }
+      }
+    }
+
+    if (report.status === "blocked" || (options.strict && report.status !== "ready")) {
+      process.exitCode = 1;
     }
   });
 
@@ -386,6 +411,19 @@ program
     console.log(`Run report: ${result.reportPath}`);
     console.log(`Report copy: ${result.mirrorPath}`);
   });
+
+function statusIcon(status: DoctorStatus): string {
+  switch (status) {
+    case "pass":
+      return "OK";
+    case "warn":
+      return "WARN";
+    case "fail":
+      return "FAIL";
+    case "info":
+      return "INFO";
+  }
+}
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   if (error instanceof Error) {
