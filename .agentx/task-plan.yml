@@ -1,5 +1,5 @@
 version: 1
-runId: add-a-retry-command-for-failed-agents-20260702T125944
+runId: progress-smoke-test-20260702T160834
 baseBranch: main
 verify:
   - npm run typecheck
@@ -20,7 +20,7 @@ agents:
   commands:
     adapter: noop
     task: |-
-      add a retry command for failed agents
+      progress smoke test
 
       Focus only on src/commands. Emit agent-output/manifest.json when complete.
     owns:
@@ -47,7 +47,7 @@ agents:
   generators:
     adapter: noop
     task: >-
-      add a retry command for failed agents
+      progress smoke test
 
 
       Focus only on src/generators. Emit agent-output/manifest.json when
@@ -76,7 +76,7 @@ agents:
   schemas:
     adapter: noop
     task: |-
-      add a retry command for failed agents
+      progress smoke test
 
       Focus only on src/schemas. Emit agent-output/manifest.json when complete.
     owns:

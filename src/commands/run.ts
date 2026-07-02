@@ -36,7 +36,19 @@ type RunSummary = {
   agents: AgentRunSummary[];
 };
 
-export async function runPlanFile(planPath: string, cwd: string): Promise<RunSummary> {
+export type RunProgressEvent =
+  | { type: "run_started"; runId: string; agentCount: number; worktreeRoot: string }
+  | { type: "agent_started"; agent: string; index: number; total: number; workspacePath: string }
+  | { type: "agent_command"; agent: string; command: string }
+  | { type: "agent_output"; agent: string; chunk: string }
+  | { type: "agent_finished"; agent: string; status: AgentRunStatus; exitCode: number; changedFiles: number; violations: number; logPath: string }
+  | { type: "run_finished"; runId: string; status: RunSummary["status"]; summaryPath: string };
+
+type RunPlanOptions = {
+  onProgress?: (event: RunProgressEvent) => void;
+};
+
+export async function runPlanFile(planPath: string, cwd: string, options: RunPlanOptions = {}): Promise<RunSummary> {
   const { plan } = await validatePlanFile(planPath, cwd);
   const runRoot = join(cwd, ".agentx", "runs", plan.runId);
   const worktreeRoot = join(cwd, ".agentx", "worktrees", plan.runId);
@@ -51,9 +63,11 @@ export async function runPlanFile(planPath: string, cwd: string): Promise<RunSum
   await copyFile(resolve(cwd, planPath), join(runRoot, "task-plan.yml"));
 
   const agents: AgentRunSummary[] = [];
+  const agentEntries = Object.entries(plan.agents);
+  options.onProgress?.({ type: "run_started", runId: plan.runId, agentCount: agentEntries.length, worktreeRoot });
 
-  for (const [agentName] of Object.entries(plan.agents)) {
-    agents.push(await runAgent(plan, agentName, cwd, runRoot, worktreeRoot));
+  for (const [index, agentName] of agentEntries.map(([name]) => name).entries()) {
+    agents.push(await runAgent(plan, agentName, cwd, runRoot, worktreeRoot, index + 1, agentEntries.length, options));
   }
 
   await applyDuplicateManifestIdRejections(agents, runRoot);
@@ -73,12 +87,23 @@ export async function runPlanFile(planPath: string, cwd: string): Promise<RunSum
     agents,
   };
 
-  await writeFile(join(runRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  const summaryPath = join(runRoot, "summary.json");
+  await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+  options.onProgress?.({ type: "run_finished", runId: plan.runId, status, summaryPath });
 
   return summary;
 }
 
-async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot: string, worktreeRoot: string): Promise<AgentRunSummary> {
+async function runAgent(
+  plan: TaskPlan,
+  agentName: string,
+  cwd: string,
+  runRoot: string,
+  worktreeRoot: string,
+  index: number,
+  total: number,
+  options: RunPlanOptions,
+): Promise<AgentRunSummary> {
   const agent = plan.agents[agentName];
   if (!agent) {
     throw new Error(`Unknown agent "${agentName}"`);
@@ -92,6 +117,7 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
 
   await mkdir(agentRunRoot, { recursive: true });
   await createWorktree(cwd, workspacePath, plan.baseBranch);
+  options.onProgress?.({ type: "agent_started", agent: agentName, index, total, workspacePath });
   const taskFile = ".agentx-task.md";
   await writeFile(join(workspacePath, taskFile), renderAgentTask(agentName, agent, plan));
   const command = await resolveAgentCommand(cwd, {
@@ -99,14 +125,22 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
     agent,
     taskFile,
   });
+  options.onProgress?.({ type: "agent_command", agent: agentName, command });
 
   const startedAt = new Date().toISOString();
-  const commandResult = await execa(command, {
+  const outputChunks: string[] = [];
+  const subprocess = execa(command, {
     cwd: workspacePath,
     shell: true,
     reject: false,
     all: true,
   });
+  subprocess.all?.on("data", (chunk: Buffer | string) => {
+    const text = chunk.toString();
+    outputChunks.push(text);
+    options.onProgress?.({ type: "agent_output", agent: agentName, chunk: text });
+  });
+  const commandResult = await subprocess;
   const finishedAt = new Date().toISOString();
   const exitCode = commandResult.exitCode ?? 1;
 
@@ -120,7 +154,7 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
       `Finished: ${finishedAt}`,
       `Exit code: ${exitCode}`,
       "",
-      commandResult.all ?? "",
+      outputChunks.join(""),
     ].join("\n"),
   );
 
@@ -168,6 +202,15 @@ async function runAgent(plan: TaskPlan, agentName: string, cwd: string, runRoot:
   };
 
   await writeFile(join(agentRunRoot, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  options.onProgress?.({
+    type: "agent_finished",
+    agent: agentName,
+    status,
+    exitCode,
+    changedFiles: changedFiles.length,
+    violations: violations.length,
+    logPath,
+  });
 
   return summary;
 }

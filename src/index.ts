@@ -10,7 +10,7 @@ import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
 import { initAgentx } from "./commands/init.js";
 import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
 import { generateReport } from "./commands/report.js";
-import { runPlanFile } from "./commands/run.js";
+import { runPlanFile, type RunProgressEvent } from "./commands/run.js";
 import { getRunStatus, listRunStatuses } from "./commands/status.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 import { verifyRun } from "./commands/verify.js";
@@ -297,7 +297,7 @@ program
     }
 
     console.log("");
-    const run = await runPlanFile(plan.path, process.cwd());
+    const run = await runPlanFile(plan.path, process.cwd(), { onProgress: printRunProgress });
     console.log(`Run complete: ${run.runId}`);
     console.log(`Status: ${run.status}`);
     for (const agent of run.agents) {
@@ -341,7 +341,7 @@ program
   .argument("<plan>", "Path to a task-plan.yml file")
   .description("Run agents from a task plan in isolated worktrees.")
   .action(async (plan: string) => {
-    const summary = await runPlanFile(plan, process.cwd());
+    const summary = await runPlanFile(plan, process.cwd(), { onProgress: printRunProgress });
 
     console.log(`Run complete: ${summary.runId}`);
     console.log(`Status: ${summary.status}`);
@@ -493,6 +493,46 @@ function statusIcon(status: DoctorStatus): string {
       return "FAIL";
     case "info":
       return "INFO";
+  }
+}
+
+function printRunProgress(event: RunProgressEvent): void {
+  switch (event.type) {
+    case "run_started":
+      console.log(`Starting run ${event.runId} with ${event.agentCount} agent${event.agentCount === 1 ? "" : "s"}.`);
+      console.log(`Worktrees: ${event.worktreeRoot}`);
+      return;
+    case "agent_started":
+      console.log("");
+      console.log(`Agent ${event.index}/${event.total} started: ${event.agent}`);
+      console.log(`Workspace: ${event.workspacePath}`);
+      return;
+    case "agent_command":
+      console.log(`Command: ${event.command}`);
+      return;
+    case "agent_output":
+      writeAgentOutput(event.agent, event.chunk);
+      return;
+    case "agent_finished":
+      console.log("");
+      console.log(
+        `Agent finished: ${event.agent} -> ${event.status} (exit ${event.exitCode}, ${event.changedFiles} changed file${event.changedFiles === 1 ? "" : "s"}, ${event.violations} violation${event.violations === 1 ? "" : "s"})`,
+      );
+      console.log(`Log: ${event.logPath}`);
+      return;
+    case "run_finished":
+      console.log("");
+      console.log(`Run summary written: ${event.summaryPath}`);
+      return;
+  }
+}
+
+function writeAgentOutput(agent: string, chunk: string): void {
+  for (const line of chunk.split(/\r?\n/)) {
+    if (line.length === 0) {
+      continue;
+    }
+    process.stdout.write(`[${agent}] ${line}\n`);
   }
 }
 
