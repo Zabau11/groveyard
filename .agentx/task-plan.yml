@@ -1,0 +1,102 @@
+version: 1
+runId: add-a-retry-command-for-failed-agents-20260702T125944
+baseBranch: main
+verify:
+  - npm run typecheck
+  - npm run build
+protected:
+  - .agentx/**
+  - contracts/**
+  - src/generated/**
+  - package.json
+  - package-lock.json
+  - pnpm-lock.yaml
+  - yarn.lock
+  - bun.lockb
+  - src/index.ts
+  - tsconfig.json
+generators: {}
+agents:
+  commands:
+    adapter: noop
+    task: |-
+      add a retry command for failed agents
+
+      Focus only on src/commands. Emit agent-output/manifest.json when complete.
+    owns:
+      - src/commands/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - contracts/**
+      - src/core/**
+    forbidden:
+      - .agentx/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/index.ts
+      - tsconfig.json
+      - src/generators/**
+      - src/schemas/**
+    outputs: []
+  generators:
+    adapter: noop
+    task: >-
+      add a retry command for failed agents
+
+
+      Focus only on src/generators. Emit agent-output/manifest.json when
+      complete.
+    owns:
+      - src/generators/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - contracts/**
+      - src/core/**
+    forbidden:
+      - .agentx/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/index.ts
+      - tsconfig.json
+      - src/commands/**
+      - src/schemas/**
+    outputs: []
+  schemas:
+    adapter: noop
+    task: |-
+      add a retry command for failed agents
+
+      Focus only on src/schemas. Emit agent-output/manifest.json when complete.
+    owns:
+      - src/schemas/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - contracts/**
+      - src/core/**
+    forbidden:
+      - .agentx/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/index.ts
+      - tsconfig.json
+      - src/commands/**
+      - src/generators/**
+    outputs: []

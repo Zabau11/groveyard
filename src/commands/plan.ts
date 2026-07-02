@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { analyzeRepository, type ModuleCandidate, type RepoAnalysis } from "./analyze.js";
 import { validatePlanFile } from "./validate-plan.js";
 import { taskPlanSchema, type TaskPlan } from "../schemas/task-plan.js";
+import { globsMayOverlap } from "../validation/globs.js";
 
 type CreatePlanOptions = {
   adapter?: string;
@@ -56,7 +57,8 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
 
   const runId = createRunId(goal);
   const adapter = options.adapter ?? "auto";
-  const protectedPaths = unique([...analysis.protected, ...analysis.sharedFiles]);
+  const selectedOwnGlobs = selectedModules.map((module) => `${module.path}/**`);
+  const protectedPaths = unique([...analysis.protected, ...analysis.sharedFiles]).filter((protectedPath) => !selectedOwnGlobs.some((ownedGlob) => globsMayOverlap(ownedGlob, protectedPath)));
   const agents = Object.fromEntries(
     selectedModules.map((module) => {
       const agentName = sanitizeAgentName(module.name);
@@ -66,7 +68,9 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
         owns: [`${module.path}/**`],
         mayRead: ["README.md", "IDEA.md", "contracts/**", "src/core/**"],
         outputs: [],
-        forbidden: unique([...protectedPaths, ...selectedModules.filter((candidate) => candidate.path !== module.path).map((candidate) => `${candidate.path}/**`)]),
+        forbidden: unique([...protectedPaths, ...selectedModules.filter((candidate) => candidate.path !== module.path).map((candidate) => `${candidate.path}/**`)]).filter(
+          (forbiddenPath) => !globsMayOverlap(`${module.path}/**`, forbiddenPath),
+        ),
       };
 
       if (adapter === "generic") {

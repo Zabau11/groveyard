@@ -12,6 +12,11 @@
       "kind": "source"
     },
     {
+      "name": "generators",
+      "path": "src/generators",
+      "kind": "source"
+    },
+    {
       "name": "schemas",
       "path": "src/schemas",
       "kind": "source"
@@ -25,6 +30,7 @@
   "sharedFiles": [
     "package-lock.json",
     "package.json",
+    "src/generators/routes.ts",
     "src/index.ts",
     "tsconfig.json"
   ],
