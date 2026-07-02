@@ -265,8 +265,9 @@ program
   .option("--no-compose", "Skip composition")
   .option("--no-verify", "Skip verification")
   .option("--no-report", "Skip report generation")
+  .option("--verbose", "Show adapter commands, workspaces, and live agent output")
   .description("Run the one-command AgentX flow from goal to report.")
-  .action(async (goalParts: string[], options: { adapter: string; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean }) => {
+  .action(async (goalParts: string[], options: { adapter: string; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean; verbose?: boolean }) => {
     const goal = goalParts.join(" ");
     let skipVerifyReason: string | undefined;
     if (options.bootstrap) {
@@ -289,23 +290,18 @@ program
 
     const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
 
-    console.log(`Draft task plan generated: ${plan.path}`);
-    console.log(`Run: ${plan.runId}`);
-    console.log(`Agents: ${plan.agentCount}`);
-    for (const line of plan.rationale) {
-      console.log(`- ${line}`);
+    console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter})`);
+    if (options.verbose) {
+      console.log(`Task plan: ${plan.path}`);
+      for (const line of plan.rationale) {
+        console.log(`- ${line}`);
+      }
     }
 
     console.log("");
-    const run = await runPlanFile(plan.path, process.cwd(), { onProgress: printRunProgress });
-    console.log(`Run complete: ${run.runId}`);
-    console.log(`Status: ${run.status}`);
-    for (const agent of run.agents) {
-      console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
-      for (const violation of agent.violations) {
-        console.log(`  - ${violation}`);
-      }
-    }
+    const run = await runPlanFile(plan.path, process.cwd(), { onProgress: createRunProgressPrinter({ verbose: Boolean(options.verbose) }) });
+    console.log(`Run: ${run.status}`);
+    printAgentViolations(run.agents);
 
     if (!options.compose) {
       return;
@@ -313,14 +309,16 @@ program
 
     console.log("");
     const composition = await composeRun(run.runId, process.cwd());
-    console.log(`Composition complete: ${composition.status}`);
-    console.log(`Branch: ${composition.branch}`);
-    console.log(`Workspace: ${composition.workspacePath}`);
+    console.log(`Compose: ${composition.status}`);
+    if (options.verbose) {
+      console.log(`Branch: ${composition.branch}`);
+      console.log(`Workspace: ${composition.workspacePath}`);
+    }
 
     if (options.verify && !skipVerifyReason) {
       console.log("");
       const verification = await verifyRun(run.runId, process.cwd());
-      console.log(`Verification complete: ${verification.status}`);
+      console.log(`Verify: ${verification.status}`);
       for (const command of verification.commands) {
         console.log(`- ${command.status}: ${command.command} (${command.durationMs}ms)`);
       }
@@ -332,29 +330,24 @@ program
     if (options.report) {
       console.log("");
       const report = await generateReport(run.runId, process.cwd());
-      console.log(`Report generated: ${report.reportPath}`);
+      console.log(`Report: ${report.reportPath}`);
     }
   });
 
 program
   .command("run")
   .argument("<plan>", "Path to a task-plan.yml file")
+  .option("--verbose", "Show adapter commands, workspaces, and live agent output")
   .description("Run agents from a task plan in isolated worktrees.")
-  .action(async (plan: string) => {
-    const summary = await runPlanFile(plan, process.cwd(), { onProgress: printRunProgress });
+  .action(async (plan: string, options: { verbose?: boolean }) => {
+    const summary = await runPlanFile(plan, process.cwd(), { onProgress: createRunProgressPrinter({ verbose: Boolean(options.verbose) }) });
 
-    console.log(`Run complete: ${summary.runId}`);
+    console.log(`Run: ${summary.runId}`);
     console.log(`Status: ${summary.status}`);
-    console.log(`Run directory: ${summary.runPath}`);
-    console.log("");
-    for (const agent of summary.agents) {
-      console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
-      if (agent.violations.length > 0) {
-        for (const violation of agent.violations) {
-          console.log(`  - ${violation}`);
-        }
-      }
+    if (options.verbose) {
+      console.log(`Run directory: ${summary.runPath}`);
     }
+    printAgentViolations(summary.agents);
   });
 
 program
@@ -496,34 +489,102 @@ function statusIcon(status: DoctorStatus): string {
   }
 }
 
-function printRunProgress(event: RunProgressEvent): void {
-  switch (event.type) {
-    case "run_started":
-      console.log(`Starting run ${event.runId} with ${event.agentCount} agent${event.agentCount === 1 ? "" : "s"}.`);
-      console.log(`Worktrees: ${event.worktreeRoot}`);
+function createRunProgressPrinter(options: { verbose: boolean }): (event: RunProgressEvent) => void {
+  let activeIndicator: AgentActivityIndicator | undefined;
+
+  return (event) => {
+    switch (event.type) {
+      case "run_started":
+        console.log(`Running ${formatCount(event.agentCount, "agent")}...`);
+        if (options.verbose) {
+          console.log(`Worktrees: ${event.worktreeRoot}`);
+        }
+        return;
+      case "agent_started":
+        activeIndicator?.stop();
+        activeIndicator = new AgentActivityIndicator({
+          agent: event.agent,
+          focus: event.owns.join(", "),
+          index: event.index,
+          total: event.total,
+          enabled: !options.verbose,
+        });
+        activeIndicator.start();
+        if (options.verbose) {
+          console.log(`- ${event.agent}: started (${event.index}/${event.total})`);
+          console.log(`  working on: ${event.owns.join(", ")}`);
+          console.log(`  workspace: ${event.workspacePath}`);
+        }
+        return;
+      case "agent_command":
+        if (options.verbose) {
+          console.log(`  command: ${event.command}`);
+        }
+        return;
+      case "agent_output":
+        if (options.verbose) {
+          writeAgentOutput(event.agent, event.chunk);
+        }
+        return;
+      case "agent_finished":
+        activeIndicator?.stop();
+        activeIndicator = undefined;
+        console.log(`- ${event.agent}: ${event.status} (${formatCount(event.changedFiles, "changed file")}, ${formatCount(event.violations, "violation")})`);
+        if (options.verbose) {
+          console.log(`  exit: ${event.exitCode}`);
+          console.log(`  log: ${event.logPath}`);
+        }
+        return;
+      case "run_finished":
+        activeIndicator?.stop();
+        activeIndicator = undefined;
+        if (options.verbose) {
+          console.log(`Summary: ${event.summaryPath}`);
+        }
+        return;
+    }
+  };
+}
+
+class AgentActivityIndicator {
+  private frame = 0;
+  private timer: NodeJS.Timeout | undefined;
+  private lastLineLength = 0;
+
+  constructor(private readonly input: { agent: string; focus: string; index: number; total: number; enabled: boolean }) {}
+
+  start(): void {
+    if (!this.input.enabled) {
       return;
-    case "agent_started":
-      console.log("");
-      console.log(`Agent ${event.index}/${event.total} started: ${event.agent}`);
-      console.log(`Workspace: ${event.workspacePath}`);
+    }
+
+    if (!process.stdout.isTTY) {
+      console.log(`- ${this.input.agent}: working on ${this.input.focus} (${this.input.index}/${this.input.total})`);
       return;
-    case "agent_command":
-      console.log(`Command: ${event.command}`);
-      return;
-    case "agent_output":
-      writeAgentOutput(event.agent, event.chunk);
-      return;
-    case "agent_finished":
-      console.log("");
-      console.log(
-        `Agent finished: ${event.agent} -> ${event.status} (exit ${event.exitCode}, ${event.changedFiles} changed file${event.changedFiles === 1 ? "" : "s"}, ${event.violations} violation${event.violations === 1 ? "" : "s"})`,
-      );
-      console.log(`Log: ${event.logPath}`);
-      return;
-    case "run_finished":
-      console.log("");
-      console.log(`Run summary written: ${event.summaryPath}`);
-      return;
+    }
+
+    this.render();
+    this.timer = setInterval(() => this.render(), 400);
+  }
+
+  stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+
+    if (this.input.enabled && process.stdout.isTTY && this.lastLineLength > 0) {
+      process.stdout.write(`\r${" ".repeat(this.lastLineLength)}\r`);
+      this.lastLineLength = 0;
+    }
+  }
+
+  private render(): void {
+    const dots = ".".repeat((this.frame % 4) + 1);
+    this.frame += 1;
+    const line = `- ${this.input.agent}: working on ${this.input.focus}${dots} (${this.input.index}/${this.input.total})`;
+    this.lastLineLength = Math.max(this.lastLineLength, line.length);
+    process.stdout.write(`\r${line}${" ".repeat(Math.max(0, this.lastLineLength - line.length))}`);
   }
 }
 
@@ -534,6 +595,26 @@ function writeAgentOutput(agent: string, chunk: string): void {
     }
     process.stdout.write(`[${agent}] ${line}\n`);
   }
+}
+
+function printAgentViolations(agents: Array<{ agent: string; violations: string[] }>): void {
+  const agentsWithViolations = agents.filter((agent) => agent.violations.length > 0);
+  if (agentsWithViolations.length === 0) {
+    return;
+  }
+
+  console.log("");
+  console.log("Issues:");
+  for (const agent of agentsWithViolations) {
+    console.log(`- ${agent.agent}`);
+    for (const violation of agent.violations) {
+      console.log(`  - ${violation}`);
+    }
+  }
+}
+
+function formatCount(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
 }
 
 program.parseAsync(process.argv).catch((error: unknown) => {

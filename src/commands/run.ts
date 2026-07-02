@@ -38,7 +38,7 @@ type RunSummary = {
 
 export type RunProgressEvent =
   | { type: "run_started"; runId: string; agentCount: number; worktreeRoot: string }
-  | { type: "agent_started"; agent: string; index: number; total: number; workspacePath: string }
+  | { type: "agent_started"; agent: string; index: number; total: number; workspacePath: string; owns: string[] }
   | { type: "agent_command"; agent: string; command: string }
   | { type: "agent_output"; agent: string; chunk: string }
   | { type: "agent_finished"; agent: string; status: AgentRunStatus; exitCode: number; changedFiles: number; violations: number; logPath: string }
@@ -117,7 +117,7 @@ async function runAgent(
 
   await mkdir(agentRunRoot, { recursive: true });
   await createWorktree(cwd, workspacePath, plan.baseBranch);
-  options.onProgress?.({ type: "agent_started", agent: agentName, index, total, workspacePath });
+  options.onProgress?.({ type: "agent_started", agent: agentName, index, total, workspacePath, owns: agent.owns });
   const taskFile = ".agentx-task.md";
   await writeFile(join(workspacePath, taskFile), renderAgentTask(agentName, agent, plan));
   const command = await resolveAgentCommand(cwd, {
