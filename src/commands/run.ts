@@ -134,6 +134,7 @@ async function runAgent(
     shell: true,
     reject: false,
     all: true,
+    stdin: "ignore",
   });
   subprocess.all?.on("data", (chunk: Buffer | string) => {
     const text = chunk.toString();

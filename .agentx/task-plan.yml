@@ -1,5 +1,5 @@
 version: 1
-runId: commands-add-an-exported-helper-in-src-commands--20260702T220315
+runId: commands-add-an-exported-helper-in-src-commands--20260702T220759
 baseBranch: main
 verify:
   - npm run typecheck
