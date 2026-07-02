@@ -521,6 +521,12 @@ function createRunProgressPrinter(options: { verbose: boolean }): (event: RunPro
           console.log(`  command: ${event.command}`);
         }
         return;
+      case "agent_activity":
+        activeIndicator?.update(event.activity);
+        if (options.verbose) {
+          console.log(`  activity: ${event.activity}`);
+        }
+        return;
       case "agent_output":
         if (options.verbose) {
           writeAgentOutput(event.agent, event.chunk);
@@ -550,8 +556,11 @@ class AgentActivityIndicator {
   private frame = 0;
   private timer: NodeJS.Timeout | undefined;
   private lastLineLength = 0;
+  private activity: string;
 
-  constructor(private readonly input: { agent: string; focus: string; index: number; total: number; enabled: boolean }) {}
+  constructor(private readonly input: { agent: string; focus: string; index: number; total: number; enabled: boolean }) {
+    this.activity = `working on ${input.focus}`;
+  }
 
   start(): void {
     if (!this.input.enabled) {
@@ -579,10 +588,24 @@ class AgentActivityIndicator {
     }
   }
 
+  update(activity: string): void {
+    this.activity = activity;
+    if (!this.input.enabled) {
+      return;
+    }
+
+    if (!process.stdout.isTTY) {
+      console.log(`- ${this.input.agent}: ${activity} (${this.input.index}/${this.input.total})`);
+      return;
+    }
+
+    this.render();
+  }
+
   private render(): void {
     const dots = ".".repeat((this.frame % 4) + 1);
     this.frame += 1;
-    const line = `- ${this.input.agent}: working on ${this.input.focus}${dots} (${this.input.index}/${this.input.total})`;
+    const line = `- ${this.input.agent}: ${this.activity}${dots} (${this.input.index}/${this.input.total})`;
     this.lastLineLength = Math.max(this.lastLineLength, line.length);
     process.stdout.write(`\r${line}${" ".repeat(Math.max(0, this.lastLineLength - line.length))}`);
   }
