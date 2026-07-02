@@ -1,5 +1,5 @@
 version: 1
-runId: progress-smoke-test-20260702T160834
+runId: commands-add-an-exported-helper-in-src-commands--20260702T220315
 baseBranch: main
 verify:
   - npm run typecheck
@@ -13,14 +13,17 @@ protected:
   - pnpm-lock.yaml
   - yarn.lock
   - bun.lockb
+  - src/generators/routes.ts
   - src/index.ts
   - tsconfig.json
 generators: {}
 agents:
   commands:
-    adapter: noop
-    task: |-
-      progress smoke test
+    adapter: auto
+    task: >-
+      commands add an exported helper in src/commands/status.ts that formats a
+      run status summary line
+
 
       Focus only on src/commands. Emit agent-output/manifest.json when complete.
     owns:
@@ -39,64 +42,7 @@ agents:
       - pnpm-lock.yaml
       - yarn.lock
       - bun.lockb
+      - src/generators/routes.ts
       - src/index.ts
       - tsconfig.json
-      - src/generators/**
-      - src/schemas/**
-    outputs: []
-  generators:
-    adapter: noop
-    task: >-
-      progress smoke test
-
-
-      Focus only on src/generators. Emit agent-output/manifest.json when
-      complete.
-    owns:
-      - src/generators/**
-    mayRead:
-      - README.md
-      - IDEA.md
-      - contracts/**
-      - src/core/**
-    forbidden:
-      - .agentx/**
-      - contracts/**
-      - src/generated/**
-      - package.json
-      - package-lock.json
-      - pnpm-lock.yaml
-      - yarn.lock
-      - bun.lockb
-      - src/index.ts
-      - tsconfig.json
-      - src/commands/**
-      - src/schemas/**
-    outputs: []
-  schemas:
-    adapter: noop
-    task: |-
-      progress smoke test
-
-      Focus only on src/schemas. Emit agent-output/manifest.json when complete.
-    owns:
-      - src/schemas/**
-    mayRead:
-      - README.md
-      - IDEA.md
-      - contracts/**
-      - src/core/**
-    forbidden:
-      - .agentx/**
-      - contracts/**
-      - src/generated/**
-      - package.json
-      - package-lock.json
-      - pnpm-lock.yaml
-      - yarn.lock
-      - bun.lockb
-      - src/index.ts
-      - tsconfig.json
-      - src/commands/**
-      - src/generators/**
     outputs: []

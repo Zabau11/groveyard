@@ -45,8 +45,8 @@ adapters:
 
   codex:
     type: "shell"
-    commandTemplate: "codex exec --full-auto {{taskFile}}"
-    description: "Runs Codex CLI against the generated task file. Edit this template if your local Codex CLI uses different flags."
+    commandTemplate: 'codex exec --sandbox workspace-write "$(cat {{taskFile}})"'
+    description: "Runs Codex CLI with the generated task file as the prompt. Edit this template if your local Codex CLI uses different flags."
 
   claude:
     type: "shell"
