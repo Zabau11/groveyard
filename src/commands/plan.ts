@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { analyzeRepository, type ModuleCandidate, type RepoAnalysis } from "./analyze.js";
+import { selectModulesForGoal, type ModuleSelection, type PlannerMode } from "./planner.js";
 import { validatePlanFile } from "./validate-plan.js";
 import { taskPlanSchema, type TaskPlan } from "../schemas/task-plan.js";
 import { globsMayOverlap } from "../validation/globs.js";
@@ -9,6 +10,7 @@ import { globsMayOverlap } from "../validation/globs.js";
 type CreatePlanOptions = {
   adapter?: string;
   out?: string;
+  planner?: PlannerMode;
 };
 
 type CreatePlanResult = {
@@ -24,15 +26,16 @@ export type DraftPlanPreview = {
   selectedModules: ModuleCandidate[];
   analysis: RepoAnalysis;
   adapter: string;
+  planner: ModuleSelection;
   rationale: string[];
 };
 
-export async function previewDraftPlan(goal: string, cwd: string, options: Pick<CreatePlanOptions, "adapter"> = {}): Promise<DraftPlanPreview> {
-  return buildDraftPlan(goal, cwd, { adapter: options.adapter, writeAnalysis: false });
+export async function previewDraftPlan(goal: string, cwd: string, options: Pick<CreatePlanOptions, "adapter" | "planner"> = {}): Promise<DraftPlanPreview> {
+  return buildDraftPlan(goal, cwd, { adapter: options.adapter, planner: options.planner, writeAnalysis: false });
 }
 
 export async function createDraftPlan(goal: string, cwd: string, options: CreatePlanOptions = {}): Promise<CreatePlanResult> {
-  const draft = await buildDraftPlan(goal, cwd, { adapter: options.adapter, writeAnalysis: true });
+  const draft = await buildDraftPlan(goal, cwd, { adapter: options.adapter, planner: options.planner, writeAnalysis: true });
   const outputPath = options.out ?? join(".agentx", "task-plan.yml");
   const fullOutputPath = isAbsolute(outputPath) ? outputPath : join(cwd, outputPath);
   await mkdir(dirname(fullOutputPath), { recursive: true });
@@ -48,9 +51,10 @@ export async function createDraftPlan(goal: string, cwd: string, options: Create
   };
 }
 
-async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: string; writeAnalysis: boolean }): Promise<DraftPlanPreview> {
+async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: string; planner?: PlannerMode; writeAnalysis: boolean }): Promise<DraftPlanPreview> {
   const analysis = await analyzeRepository(cwd, { write: options.writeAnalysis });
-  const selectedModules = selectModules(goal, analysis.modules);
+  const planner = await selectModulesForGoal(goal, analysis, { cwd, mode: options.planner });
+  const selectedModules = planner.modules;
   if (selectedModules.length === 0) {
     throw new Error("No safe module boundaries found. Run agentx analyze and create a task plan manually.");
   }
@@ -110,27 +114,21 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
     selectedModules,
     analysis,
     adapter,
-    rationale: buildRationale(goal, selectedModules, analysis, adapter),
+    planner,
+    rationale: buildRationale(goal, selectedModules, analysis, adapter, planner),
   };
 }
 
-function selectModules(goal: string, modules: ModuleCandidate[]): ModuleCandidate[] {
-  if (modules.length <= 1) {
-    return modules;
-  }
-
-  const tokens = tokenize(goal);
-  const directMatches = modules.filter((module) => tokens.has(module.name.toLowerCase()) || tokens.has(module.path.toLowerCase()));
-  if (directMatches.length > 0) {
-    return directMatches;
-  }
-
-  return modules.slice(0, 3);
-}
-
-function buildRationale(goal: string, modules: ModuleCandidate[], analysis: RepoAnalysis, adapter: string): string[] {
+function buildRationale(goal: string, modules: ModuleCandidate[], analysis: RepoAnalysis, adapter: string, planner: ModuleSelection): string[] {
   const rationale = [`Generated a conservative draft plan for: ${goal}`];
   rationale.push(`Using adapter: ${adapter}.`);
+  rationale.push(`Planner: ${planner.source}${typeof planner.confidence === "number" ? ` (confidence ${planner.confidence.toFixed(2)})` : ""}.`);
+  if (planner.reason) {
+    rationale.push(`Planner reason: ${planner.reason}`);
+  }
+  if (planner.warning) {
+    rationale.push(`Planner warning: ${planner.warning}`);
+  }
   rationale.push(`Selected ${modules.length} module lane${modules.length === 1 ? "" : "s"}: ${modules.map((module) => module.path).join(", ")}.`);
   if (analysis.sharedFiles.length > 0) {
     rationale.push("Protected detected shared files so normal agents cannot edit them directly.");
@@ -181,15 +179,6 @@ function sanitizeAgentName(value: string): string {
 
 function sanitizeJsonString(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
-function tokenize(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .split(/[^a-z0-9/._-]+/)
-      .filter(Boolean),
-  );
 }
 
 function unique(values: string[]): string[] {

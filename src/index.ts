@@ -14,6 +14,7 @@ import { composeRun } from "./commands/compose.js";
 import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
 import { initAgentx } from "./commands/init.js";
 import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
+import { parsePlannerMode, type PlannerMode } from "./commands/planner.js";
 import { generateReport } from "./commands/report.js";
 import { runPlanFile, type RunProgressEvent } from "./commands/run.js";
 import { selectRun } from "./commands/select-run.js";
@@ -176,11 +177,12 @@ program
   .command("plan")
   .argument("<goal...>", "Goal to turn into a draft task plan")
   .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
   .option("--out <path>", "Output path", ".agentx/task-plan.yml")
   .description("Generate a conservative draft task plan from repository analysis.")
-  .action(async (goalParts: string[], options: { adapter: string; out: string }) => {
+  .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode; out: string }) => {
     const goal = goalParts.join(" ");
-    const result = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
+    const result = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner, out: options.out });
 
     console.log(`Draft task plan generated: ${result.path}`);
     console.log(`Run: ${result.runId}`);
@@ -195,10 +197,11 @@ program
   .command("preview")
   .argument("<goal...>", "Goal to preview without running agents")
   .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
   .description("Preview the AgentX orchestration plan without writing files or creating worktrees.")
-  .action(async (goalParts: string[], options: { adapter: string }) => {
+  .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode }) => {
     const goal = goalParts.join(" ");
-    const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter });
+    const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner });
 
     console.log("AgentX preview");
     console.log("");
@@ -266,6 +269,7 @@ program
   .command("start")
   .argument("<goal...>", "Goal to plan, run, compose, verify, and report")
   .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
   .option("--bootstrap", "Create a minimal TypeScript app skeleton before planning")
   .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
   .option("--no-compose", "Skip composition")
@@ -273,7 +277,7 @@ program
   .option("--no-report", "Skip report generation")
   .option("--verbose", "Show adapter commands, workspaces, and live agent output")
   .description("Run the one-command AgentX flow from goal to report.")
-  .action(async (goalParts: string[], options: { adapter: string; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean; verbose?: boolean }) => {
+  .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean; verbose?: boolean }) => {
     const goal = goalParts.join(" ");
     let skipVerifyReason: string | undefined;
     if (options.bootstrap) {
@@ -285,7 +289,7 @@ program
         console.log("Next:");
         console.log("- npm install");
         console.log("- git add . && git commit -m \"bootstrap app\"");
-        console.log(`- agentx start "${goal}" --adapter ${options.adapter}`);
+        console.log(`- agentx start "${goal}" --adapter ${options.adapter} --planner ${options.planner}`);
         return;
       }
       if (bootstrap.needsInstall) {
@@ -294,9 +298,9 @@ program
       console.log("");
     }
 
-    const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
+    const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner, out: options.out });
 
-    console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter})`);
+    console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter}, planner=${options.planner})`);
     if (options.verbose) {
       console.log(`Task plan: ${plan.path}`);
       for (const line of plan.rationale) {
@@ -345,6 +349,7 @@ program
   .argument("[input...]", "Goal to run. Omit to run .agentx/task-plan.yml.")
   .option("--plan <path>", "Run a specific task plan instead of a goal")
   .option("--adapter <name>", "Adapter preset to use for goal mode", "auto")
+  .option("--planner <mode>", "Planner to choose module lanes in goal mode: auto, llm, or heuristic", parsePlannerMode, "auto")
   .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
   .option("--verbose", "Show adapter commands, workspaces, and live agent output")
   .option("--no-compose", "Skip composition in goal mode")
@@ -352,7 +357,7 @@ program
   .option("--no-report", "Skip report generation in goal mode")
   .option("--no-finalize", "Skip commit/PR prompts in goal mode")
   .description("Run AgentX from a goal, or run the current task plan when no goal is provided.")
-  .action(async (inputParts: string[] | undefined, options: { plan?: string; adapter: string; out: string; verbose?: boolean; compose: boolean; verify: boolean; report: boolean; finalize: boolean }) => {
+  .action(async (inputParts: string[] | undefined, options: { plan?: string; adapter: string; planner: PlannerMode; out: string; verbose?: boolean; compose: boolean; verify: boolean; report: boolean; finalize: boolean }) => {
     if (options.plan) {
       await runExistingPlan(options.plan, Boolean(options.verbose));
       return;
@@ -371,6 +376,7 @@ program
 
     await runGoalFlow(inputValue, {
       adapter: options.adapter,
+      planner: options.planner,
       out: options.out,
       compose: options.compose,
       verify: options.verify,
@@ -532,11 +538,11 @@ async function printRunStatus(runId: string): Promise<void> {
 
 async function runGoalFlow(
   goal: string,
-  options: { adapter: string; out: string; compose: boolean; verify: boolean; report: boolean; finalize: boolean; verbose: boolean },
+  options: { adapter: string; planner: PlannerMode; out: string; compose: boolean; verify: boolean; report: boolean; finalize: boolean; verbose: boolean },
 ): Promise<void> {
-  const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
+  const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner, out: options.out });
 
-  console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter})`);
+  console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter}, planner=${options.planner})`);
   if (options.verbose) {
     console.log(`Task plan: ${plan.path}`);
     for (const line of plan.rationale) {

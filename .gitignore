@@ -3,3 +3,5 @@ dist/
 .agentx/runs/
 .agentx/worktrees/
 .DS_Store
+.env
+.env.*
