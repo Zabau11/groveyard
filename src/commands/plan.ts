@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { analyzeRepository, type ModuleCandidate, type RepoAnalysis } from "./analyze.js";
 import { validatePlanFile } from "./validate-plan.js";
@@ -34,8 +34,8 @@ export async function previewDraftPlan(goal: string, cwd: string, options: Pick<
 export async function createDraftPlan(goal: string, cwd: string, options: CreatePlanOptions = {}): Promise<CreatePlanResult> {
   const draft = await buildDraftPlan(goal, cwd, { adapter: options.adapter, writeAnalysis: true });
   const outputPath = options.out ?? join(".agentx", "task-plan.yml");
-  const fullOutputPath = join(cwd, outputPath);
-  await mkdir(join(cwd, ".agentx"), { recursive: true });
+  const fullOutputPath = isAbsolute(outputPath) ? outputPath : join(cwd, outputPath);
+  await mkdir(dirname(fullOutputPath), { recursive: true });
   await writeFile(fullOutputPath, stringifyYaml(draft.plan));
 
   await validatePlanFile(outputPath, cwd);

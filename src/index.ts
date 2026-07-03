@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
+import { stat } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import { Command } from "commander";
+import { execa } from "execa";
 import { analyzeRepository } from "./commands/analyze.js";
 import { detectAutoAdapter, listAdapters } from "./commands/adapters.js";
 import { applyRun } from "./commands/apply.js";
@@ -338,18 +342,42 @@ program
 
 program
   .command("run")
-  .argument("<plan>", "Path to a task-plan.yml file")
+  .argument("[input...]", "Goal to run. Omit to run .agentx/task-plan.yml.")
+  .option("--plan <path>", "Run a specific task plan instead of a goal")
+  .option("--adapter <name>", "Adapter preset to use for goal mode", "auto")
+  .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
   .option("--verbose", "Show adapter commands, workspaces, and live agent output")
-  .description("Run agents from a task plan in isolated worktrees.")
-  .action(async (plan: string, options: { verbose?: boolean }) => {
-    const summary = await runPlanFile(plan, process.cwd(), { onProgress: createRunProgressPrinter({ verbose: Boolean(options.verbose) }) });
-
-    console.log(`Run: ${summary.runId}`);
-    console.log(`Status: ${summary.status}`);
-    if (options.verbose) {
-      console.log(`Run directory: ${summary.runPath}`);
+  .option("--no-compose", "Skip composition in goal mode")
+  .option("--no-verify", "Skip verification in goal mode")
+  .option("--no-report", "Skip report generation in goal mode")
+  .option("--no-finalize", "Skip commit/PR prompts in goal mode")
+  .description("Run AgentX from a goal, or run the current task plan when no goal is provided.")
+  .action(async (inputParts: string[] | undefined, options: { plan?: string; adapter: string; out: string; verbose?: boolean; compose: boolean; verify: boolean; report: boolean; finalize: boolean }) => {
+    if (options.plan) {
+      await runExistingPlan(options.plan, Boolean(options.verbose));
+      return;
     }
-    printAgentViolations(summary.agents);
+
+    if (!inputParts || inputParts.length === 0) {
+      await runExistingPlan(".agentx/task-plan.yml", Boolean(options.verbose));
+      return;
+    }
+
+    const inputValue = inputParts.join(" ");
+    if (await looksLikePlanFile(inputValue)) {
+      await runExistingPlan(inputValue, Boolean(options.verbose));
+      return;
+    }
+
+    await runGoalFlow(inputValue, {
+      adapter: options.adapter,
+      out: options.out,
+      compose: options.compose,
+      verify: options.verify,
+      report: options.report,
+      finalize: options.finalize,
+      verbose: Boolean(options.verbose),
+    });
   });
 
 program
@@ -500,6 +528,174 @@ async function printRunStatus(runId: string): Promise<void> {
   }
   console.log(`Verification: ${detail.verification ? detail.verification.status : "not_run"}`);
   console.log(`Report: ${detail.reportExists ? "generated" : "not_run"}`);
+}
+
+async function runGoalFlow(
+  goal: string,
+  options: { adapter: string; out: string; compose: boolean; verify: boolean; report: boolean; finalize: boolean; verbose: boolean },
+): Promise<void> {
+  const plan = await createDraftPlan(goal, process.cwd(), { adapter: options.adapter, out: options.out });
+
+  console.log(`Plan: ${plan.runId} (${formatCount(plan.agentCount, "agent")}, adapter=${options.adapter})`);
+  if (options.verbose) {
+    console.log(`Task plan: ${plan.path}`);
+    for (const line of plan.rationale) {
+      console.log(`- ${line}`);
+    }
+  }
+
+  console.log("");
+  const run = await runPlanFile(plan.path, process.cwd(), { onProgress: createRunProgressPrinter({ verbose: options.verbose }) });
+  console.log(`Run: ${run.status}`);
+  printAgentViolations(run.agents);
+
+  if (!options.compose) {
+    return;
+  }
+
+  console.log("");
+  const composition = await composeRun(run.runId, process.cwd());
+  console.log(`Compose: ${composition.status}`);
+  if (options.verbose) {
+    console.log(`Branch: ${composition.branch}`);
+    console.log(`Workspace: ${composition.workspacePath}`);
+  }
+
+  let verificationPassed = false;
+  if (options.verify) {
+    console.log("");
+    const verification = await verifyRun(run.runId, process.cwd());
+    verificationPassed = verification.status === "passed";
+    console.log(`Verify: ${verification.status}`);
+    for (const command of verification.commands) {
+      console.log(`- ${command.status}: ${command.command} (${command.durationMs}ms)`);
+    }
+  }
+
+  if (options.report) {
+    console.log("");
+    const report = await generateReport(run.runId, process.cwd());
+    console.log(`Report: ${report.reportPath}`);
+  }
+
+  if (options.finalize) {
+    console.log("");
+    await promptFinalizeRun({ goal, branch: composition.branch, workspacePath: composition.workspacePath, verificationPassed });
+  }
+}
+
+async function runExistingPlan(planPath: string, verbose: boolean): Promise<void> {
+  const summary = await runPlanFile(planPath, process.cwd(), { onProgress: createRunProgressPrinter({ verbose }) });
+
+  console.log(`Run: ${summary.runId}`);
+  console.log(`Status: ${summary.status}`);
+  if (verbose) {
+    console.log(`Run directory: ${summary.runPath}`);
+  }
+  printAgentViolations(summary.agents);
+}
+
+async function promptFinalizeRun(input: { goal: string; branch: string; workspacePath: string; verificationPassed: boolean }): Promise<void> {
+  if (!process.stdin.isTTY) {
+    console.log(`Next: review ${input.workspacePath}`);
+    console.log(`Commit branch: git -C ${input.workspacePath} commit -m ${shellDisplayQuote(commitMessage(input.goal))}`);
+    console.log(`Create PR: git -C ${input.workspacePath} push -u origin ${input.branch} && gh pr create --fill`);
+    return;
+  }
+
+  if (!input.verificationPassed) {
+    const proceed = await askYesNo("Verification did not pass or was skipped. Continue to finalize?", false);
+    if (!proceed) {
+      return;
+    }
+  }
+
+  const shouldCommit = await askYesNo(`Commit changes on ${input.branch}?`, true);
+  if (!shouldCommit) {
+    console.log(`Left changes staged in: ${input.workspacePath}`);
+    return;
+  }
+
+  await commitIntegration(input.workspacePath, commitMessage(input.goal));
+  console.log(`Committed on ${input.branch}.`);
+
+  const shouldPr = await askYesNo("Create a pull request?", false);
+  if (!shouldPr) {
+    console.log(`Next: git -C ${input.workspacePath} push -u origin ${input.branch}`);
+    return;
+  }
+
+  await createPullRequest(input.workspacePath, input.branch);
+}
+
+async function commitIntegration(workspacePath: string, message: string): Promise<void> {
+  const status = await execa("git", ["status", "--porcelain"], { cwd: workspacePath });
+  if (status.stdout.trim().length === 0) {
+    console.log("No changes to commit.");
+    return;
+  }
+
+  const result = await execa("git", ["commit", "-m", message], { cwd: workspacePath, reject: false, all: true });
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to commit integration changes:\n${result.all ?? ""}`);
+  }
+}
+
+async function createPullRequest(workspacePath: string, branch: string): Promise<void> {
+  const hasGh = await execa("command", ["-v", "gh"], { shell: true, reject: false });
+  if (hasGh.exitCode !== 0) {
+    console.log("GitHub CLI not found. Install gh or create the PR manually.");
+    console.log(`Next: git -C ${workspacePath} push -u origin ${branch}`);
+    return;
+  }
+
+  const push = await execa("git", ["push", "-u", "origin", branch], { cwd: workspacePath, reject: false, all: true });
+  if (push.exitCode !== 0) {
+    throw new Error(`Failed to push branch:\n${push.all ?? ""}`);
+  }
+
+  const pr = await execa("gh", ["pr", "create", "--fill"], { cwd: workspacePath, reject: false, all: true });
+  if (pr.exitCode !== 0) {
+    throw new Error(`Failed to create pull request:\n${pr.all ?? ""}`);
+  }
+
+  console.log(pr.stdout.trim() || "Pull request created.");
+}
+
+async function askYesNo(question: string, defaultValue: boolean): Promise<boolean> {
+  const suffix = defaultValue ? "Y/n" : "y/N";
+  const rl = createInterface({ input, output });
+  try {
+    const answer = (await rl.question(`${question} [${suffix}] `)).trim().toLowerCase();
+    if (answer.length === 0) {
+      return defaultValue;
+    }
+    return answer === "y" || answer === "yes";
+  } finally {
+    rl.close();
+  }
+}
+
+async function looksLikePlanFile(value: string): Promise<boolean> {
+  if (!/\.(ya?ml)$/i.test(value)) {
+    return false;
+  }
+
+  try {
+    const result = await stat(value);
+    return result.isFile();
+  } catch {
+    return false;
+  }
+}
+
+function commitMessage(goal: string): string {
+  const compact = goal.replace(/\s+/g, " ").trim();
+  return `agentx: ${compact.slice(0, 72)}`;
+}
+
+function shellDisplayQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function statusIcon(status: DoctorStatus): string {
