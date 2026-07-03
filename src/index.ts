@@ -266,6 +266,52 @@ program
   });
 
 program
+  .command("explain")
+  .argument("<goal...>", "Goal to explain before running agents")
+  .option("--adapter <name>", "Adapter preset to use", "auto")
+  .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
+  .description("Explain what AgentX would do for a goal without writing files or running agents.")
+  .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode }) => {
+    const goal = goalParts.join(" ");
+    const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner });
+    const agents = Object.entries(preview.plan.agents);
+
+    console.log(`AgentX would run ${formatCount(agents.length, "agent")}.`);
+    console.log("");
+
+    for (const [agentName, agent] of agents) {
+      console.log(agentName);
+      console.log(`- owns: ${agent.owns.join(", ")}`);
+      const relatedReason = preview.planner.reason && agents.length === 1 ? preview.planner.reason : `This lane owns ${agent.owns.join(", ")}.`;
+      console.log(`- reason: ${relatedReason}`);
+      if (agent.forbidden.length > 0) {
+        console.log(`- protected from editing: ${agent.forbidden.slice(0, 5).join(", ")}${agent.forbidden.length > 5 ? ", ..." : ""}`);
+      }
+      console.log("");
+    }
+
+    console.log("Planning");
+    console.log(`- planner: ${preview.planner.source}${typeof preview.planner.confidence === "number" ? ` (${Math.round(preview.planner.confidence * 100)}% confidence)` : ""}`);
+    if (preview.planner.warning) {
+      console.log(`- note: ${preview.planner.warning}`);
+    }
+
+    console.log("");
+    console.log("Verification");
+    if (preview.plan.verify.length > 0) {
+      for (const command of preview.plan.verify) {
+        console.log(`- ${command}`);
+      }
+    } else {
+      console.log("- none detected");
+    }
+
+    console.log("");
+    console.log("Next");
+    console.log(`agentx run ${shellDisplayQuote(goal)}`);
+  });
+
+program
   .command("start")
   .argument("<goal...>", "Goal to plan, run, compose, verify, and report")
   .option("--adapter <name>", "Adapter preset to use", "auto")
