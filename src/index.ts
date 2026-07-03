@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { analyzeRepository } from "./commands/analyze.js";
 import { detectAutoAdapter, listAdapters } from "./commands/adapters.js";
+import { applyRun } from "./commands/apply.js";
 import { bootstrapRepository } from "./commands/bootstrap.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
@@ -474,6 +475,21 @@ program
     console.log(`Report generated: ${result.runId}`);
     console.log(`Run report: ${result.reportPath}`);
     console.log(`Report copy: ${result.mirrorPath}`);
+  });
+
+program
+  .command("apply")
+  .option("--run <runId>", "Run ID to apply; omit to choose interactively")
+  .option("--force", "Apply even if verification has not passed")
+  .description("Apply a composed AgentX run back to the current checkout.")
+  .action(async (options: { run?: string; force?: boolean }) => {
+    const result = await applyRun(process.cwd(), { run: options.run, force: options.force });
+
+    console.log(`Applied: ${result.runId}`);
+    console.log(`Changed files: ${result.files.length}`);
+    for (const file of result.files) {
+      console.log(`- ${file}`);
+    }
   });
 
 function statusIcon(status: DoctorStatus): string {
