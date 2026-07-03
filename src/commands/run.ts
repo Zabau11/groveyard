@@ -1,7 +1,8 @@
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { execa } from "execa";
-import { resolveAgentCommand } from "./adapters.js";
+import { resolveAgentCommandDetails } from "./adapters.js";
+import { createAgentOutputParser } from "./output-parsers.js";
 import { validatePlanFile } from "./validate-plan.js";
 import { renderAgentTask, validateChangedFiles } from "../validation/ownership.js";
 import type { TaskPlan } from "../schemas/task-plan.js";
@@ -121,17 +122,22 @@ async function runAgent(
   options.onProgress?.({ type: "agent_started", agent: agentName, index, total, workspacePath, owns: agent.owns });
   const taskFile = ".agentx-task.md";
   await writeFile(join(workspacePath, taskFile), renderAgentTask(agentName, agent, plan));
-  const command = await resolveAgentCommand(cwd, {
+  const resolvedCommand = await resolveAgentCommandDetails(cwd, {
     agentName,
     agent,
     taskFile,
   });
+  const command = resolvedCommand.command;
   options.onProgress?.({ type: "agent_command", agent: agentName, command });
 
   const startedAt = new Date().toISOString();
   const outputChunks: string[] = [];
-  const jsonOutputParser = createJsonOutputParser((activity) => {
-    options.onProgress?.({ type: "agent_activity", agent: agentName, activity });
+  const outputParser = createAgentOutputParser({
+    adapterName: resolvedCommand.adapterName,
+    command,
+    onActivity: (activity) => {
+      options.onProgress?.({ type: "agent_activity", agent: agentName, activity });
+    },
   });
   const subprocess = execa(command, {
     cwd: workspacePath,
@@ -143,11 +149,11 @@ async function runAgent(
   subprocess.all?.on("data", (chunk: Buffer | string) => {
     const text = chunk.toString();
     outputChunks.push(text);
-    jsonOutputParser.push(text);
+    outputParser.push(text);
     options.onProgress?.({ type: "agent_output", agent: agentName, chunk: text });
   });
   const commandResult = await subprocess;
-  jsonOutputParser.flush();
+  outputParser.flush();
   const finishedAt = new Date().toISOString();
   const exitCode = commandResult.exitCode ?? 1;
 
@@ -156,6 +162,7 @@ async function runAgent(
     [
       `Agent: ${agentName}`,
       `Adapter: ${agent.adapter}`,
+      `Resolved adapter: ${resolvedCommand.adapterName}`,
       `Command: ${command}`,
       `Started: ${startedAt}`,
       `Finished: ${finishedAt}`,
@@ -305,125 +312,6 @@ async function exportPatch(workspacePath: string): Promise<string> {
   await execa("git", ["add", "--intent-to-add", "."], { cwd: workspacePath });
   const result = await execa("git", ["diff", "--binary", "HEAD", "--", ".", ":(exclude).agentx-task.md", ":(exclude)agent-output/**"], { cwd: workspacePath });
   return result.stdout.length > 0 ? `${result.stdout}\n` : "";
-}
-
-function createJsonOutputParser(onActivity: (activity: string) => void): { push: (chunk: string) => void; flush: () => void } {
-  let buffer = "";
-  let lastActivity = "";
-
-  function emit(activity: string | undefined): void {
-    if (!activity || activity === lastActivity) {
-      return;
-    }
-
-    lastActivity = activity;
-    onActivity(activity);
-  }
-
-  function parseLine(line: string): void {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-      return;
-    }
-
-    try {
-      emit(describeCodexEvent(JSON.parse(trimmed) as JsonObject));
-    } catch {
-      // Non-JSON text can still appear around adapter output; keep it in logs, but ignore it for UI.
-    }
-  }
-
-  return {
-    push(chunk: string): void {
-      buffer += chunk;
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        parseLine(line);
-      }
-    },
-    flush(): void {
-      if (buffer.length > 0) {
-        parseLine(buffer);
-      }
-      buffer = "";
-    },
-  };
-}
-
-type JsonObject = Record<string, unknown>;
-
-function describeCodexEvent(event: JsonObject): string | undefined {
-  const type = stringValue(event.type) ?? stringValue(event.event) ?? "";
-  const item = objectValue(event.item);
-  const payload = objectValue(event.payload);
-  const data = objectValue(event.data);
-  const merged = [item, payload, data, event].filter(Boolean) as JsonObject[];
-  const text = firstString(merged, ["text", "message", "content", "summary", "delta"]);
-  const command = firstString(merged, ["command", "cmd"]);
-  const path = firstString(merged, ["path", "file", "file_path", "target"]);
-  const name = firstString(merged, ["name", "tool", "tool_name"]);
-  const lowerType = type.toLowerCase();
-
-  if (path && /(patch|edit|file|write|change)/.test(lowerType)) {
-    return `editing ${path}`;
-  }
-
-  if (command) {
-    return `running ${shortenCommand(command)}`;
-  }
-
-  if (name && /(tool|call|exec|command)/.test(lowerType)) {
-    return `using ${name}`;
-  }
-
-  if (text && /(message|assistant|reason|status|turn)/.test(lowerType)) {
-    return shortenText(text);
-  }
-
-  if (lowerType.includes("started")) {
-    return "starting";
-  }
-
-  if (lowerType.includes("completed") || lowerType.includes("finished")) {
-    return "finishing";
-  }
-
-  return undefined;
-}
-
-function firstString(objects: JsonObject[], keys: string[]): string | undefined {
-  for (const object of objects) {
-    for (const key of keys) {
-      const value = stringValue(object[key]);
-      if (value) {
-        return value;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function objectValue(value: unknown): JsonObject | undefined {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as JsonObject) : undefined;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function shortenCommand(command: string): string {
-  const compact = command.replace(/\s+/g, " ").trim();
-  return compact.length > 70 ? `${compact.slice(0, 67)}...` : compact;
-}
-
-function shortenText(text: string): string {
-  const compact = text
-    .replace(/```[\s\S]*?```/g, "code block")
-    .replace(/\s+/g, " ")
-    .trim();
-  return compact.length > 90 ? `${compact.slice(0, 87)}...` : compact;
 }
 
 function addAgentChangedFile(files: Set<string>, filePath: string): void {

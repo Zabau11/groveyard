@@ -42,6 +42,12 @@ type ResolveCommandInput = {
   taskFile: string;
 };
 
+export type ResolvedAgentCommand = {
+  command: string;
+  adapterName: string;
+  adapterType: string;
+};
+
 export async function listAdapters(cwd: string): Promise<AdapterListItem[]> {
   const config = await loadAgentxConfig(cwd);
 
@@ -84,8 +90,16 @@ export async function detectAutoAdapter(cwd: string): Promise<AdapterDetection> 
 }
 
 export async function resolveAgentCommand(cwd: string, input: ResolveCommandInput): Promise<string> {
+  return (await resolveAgentCommandDetails(cwd, input)).command;
+}
+
+export async function resolveAgentCommandDetails(cwd: string, input: ResolveCommandInput): Promise<ResolvedAgentCommand> {
   if (input.agent.command) {
-    return input.agent.command;
+    return {
+      command: input.agent.command,
+      adapterName: input.agent.adapter,
+      adapterType: "custom",
+    };
   }
 
   const config = await loadAgentxConfig(cwd);
@@ -94,20 +108,24 @@ export async function resolveAgentCommand(cwd: string, input: ResolveCommandInpu
     throw new Error(`Unknown adapter "${input.agent.adapter}" for agent "${input.agentName}".`);
   }
 
-  const resolvedAdapter = adapter.type === "auto" ? await detectAdapter(config.adapters, adapter, input.agentName) : adapter;
+  const resolved = adapter.type === "auto" ? await detectAdapter(config.adapters, adapter, input.agentName) : { name: input.agent.adapter, config: adapter };
 
-  if (!resolvedAdapter.commandTemplate) {
+  if (!resolved.config.commandTemplate) {
     throw new Error(`Adapter "${input.agent.adapter}" does not define commandTemplate, and agent "${input.agentName}" has no command.`);
   }
 
-  return renderTemplate(resolvedAdapter.commandTemplate, {
-    agent: input.agentName,
-    task: input.agent.task,
-    taskFile: input.taskFile,
-  });
+  return {
+    command: renderTemplate(resolved.config.commandTemplate, {
+      agent: input.agentName,
+      task: input.agent.task,
+      taskFile: input.taskFile,
+    }),
+    adapterName: resolved.name,
+    adapterType: resolved.config.type,
+  };
 }
 
-async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: AdapterConfig, agentName: string): Promise<AdapterConfig> {
+async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: AdapterConfig, agentName: string): Promise<{ name: string; config: AdapterConfig }> {
   const candidates = adapter.detect ?? ["codex", "claude", "cursor"];
 
   for (const candidateName of candidates) {
@@ -117,7 +135,10 @@ async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: A
     }
 
     if (await commandExists(commandNameFromTemplate(candidate.commandTemplate))) {
-      return candidate;
+      return {
+        name: candidateName,
+        config: candidate,
+      };
     }
   }
 
