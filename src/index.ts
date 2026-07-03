@@ -12,6 +12,7 @@ import { initAgentx } from "./commands/init.js";
 import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
 import { generateReport } from "./commands/report.js";
 import { runPlanFile, type RunProgressEvent } from "./commands/run.js";
+import { selectRun } from "./commands/select-run.js";
 import { getRunStatus, listRunStatuses } from "./commands/status.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 import { verifyRun } from "./commands/verify.js";
@@ -357,26 +358,7 @@ program
   .description("Show run status.")
   .action(async (options: { run?: string }) => {
     if (options.run) {
-      const detail = await getRunStatus(options.run, process.cwd());
-      console.log(`Run: ${detail.run.runId}`);
-      console.log(`Status: ${detail.run.status}`);
-      console.log(`Base branch: ${detail.run.baseBranch}`);
-      console.log(`Agents: ${detail.run.agents.length}`);
-      console.log("");
-      for (const agent of detail.run.agents) {
-        console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
-        for (const violation of agent.violations) {
-          console.log(`  - ${violation}`);
-        }
-      }
-      console.log("");
-      console.log(`Composition: ${detail.composition ? detail.composition.status : "not_run"}`);
-      if (detail.composition) {
-        console.log(`Branch: ${detail.composition.branch}`);
-        console.log(`Workspace: ${detail.composition.workspacePath}`);
-      }
-      console.log(`Verification: ${detail.verification ? detail.verification.status : "not_run"}`);
-      console.log(`Report: ${detail.reportExists ? "generated" : "not_run"}`);
+      await printRunStatus(options.run);
       return;
     }
 
@@ -386,20 +368,22 @@ program
       return;
     }
 
-    console.log("AgentX runs:");
-    for (const run of runs) {
-      console.log(
-        `- ${run.runId}: ${run.status}, agents=${run.agents}, accepted=${run.accepted}, rejected=${run.rejected}, failed=${run.failed}, composed=${run.composed ? "yes" : "no"}, verification=${run.verified}, report=${run.reported ? "yes" : "no"}`,
-      );
+    if (runs.length === 1) {
+      await printRunStatus(runs[0]!.runId);
+      return;
     }
+
+    const runId = await selectRun(process.cwd(), { kind: "any", action: "inspect" });
+    await printRunStatus(runId);
   });
 
 program
   .command("clean")
-  .requiredOption("--run <runId>", "Run ID to clean")
+  .option("--run <runId>", "Run ID to clean; omit to choose interactively")
   .description("Remove run artifacts, worktrees, report copies, and the integration branch for a run.")
-  .action(async (options: { run: string }) => {
-    const result = await cleanRun(options.run, process.cwd());
+  .action(async (options: { run?: string }) => {
+    const runId = options.run ?? (await selectRun(process.cwd(), { kind: "any", action: "clean" }));
+    const result = await cleanRun(runId, process.cwd());
 
     console.log(`Cleaned run: ${result.runId}`);
     console.log(`Removed worktrees: ${result.removedWorktrees.length}`);
@@ -417,10 +401,11 @@ program
 
 program
   .command("compose")
-  .requiredOption("--run <runId>", "Run ID to compose")
+  .option("--run <runId>", "Run ID to compose; omit to choose interactively")
   .description("Compose accepted agent patches into an integration result.")
-  .action(async (options: { run: string }) => {
-    const summary = await composeRun(options.run, process.cwd());
+  .action(async (options: { run?: string }) => {
+    const runId = options.run ?? (await selectRun(process.cwd(), { kind: "composable", action: "compose" }));
+    const summary = await composeRun(runId, process.cwd());
 
     console.log(`Composition complete: ${summary.runId}`);
     console.log(`Status: ${summary.status}`);
@@ -449,10 +434,11 @@ program
 
 program
   .command("verify")
-  .requiredOption("--run <runId>", "Run ID to verify")
+  .option("--run <runId>", "Run ID to verify; omit to choose interactively")
   .description("Run configured verification commands for a composed run.")
-  .action(async (options: { run: string }) => {
-    const summary = await verifyRun(options.run, process.cwd());
+  .action(async (options: { run?: string }) => {
+    const runId = options.run ?? (await selectRun(process.cwd(), { kind: "composed", action: "verify" }));
+    const summary = await verifyRun(runId, process.cwd());
 
     console.log(`Verification complete: ${summary.runId}`);
     console.log(`Status: ${summary.status}`);
@@ -467,10 +453,11 @@ program
 
 program
   .command("report")
-  .requiredOption("--run <runId>", "Run ID to report on")
+  .option("--run <runId>", "Run ID to report on; omit to choose interactively")
   .description("Generate or print a Markdown report for a run.")
-  .action(async (options: { run: string }) => {
-    const result = await generateReport(options.run, process.cwd());
+  .action(async (options: { run?: string }) => {
+    const runId = options.run ?? (await selectRun(process.cwd(), { kind: "any", action: "report on" }));
+    const result = await generateReport(runId, process.cwd());
 
     console.log(`Report generated: ${result.runId}`);
     console.log(`Run report: ${result.reportPath}`);
@@ -491,6 +478,29 @@ program
       console.log(`- ${file}`);
     }
   });
+
+async function printRunStatus(runId: string): Promise<void> {
+  const detail = await getRunStatus(runId, process.cwd());
+  console.log(`Run: ${detail.run.runId}`);
+  console.log(`Status: ${detail.run.status}`);
+  console.log(`Base branch: ${detail.run.baseBranch}`);
+  console.log(`Agents: ${detail.run.agents.length}`);
+  console.log("");
+  for (const agent of detail.run.agents) {
+    console.log(`- ${agent.agent}: ${agent.status} (${agent.changedFiles.length} changed files)`);
+    for (const violation of agent.violations) {
+      console.log(`  - ${violation}`);
+    }
+  }
+  console.log("");
+  console.log(`Composition: ${detail.composition ? detail.composition.status : "not_run"}`);
+  if (detail.composition) {
+    console.log(`Branch: ${detail.composition.branch}`);
+    console.log(`Workspace: ${detail.composition.workspacePath}`);
+  }
+  console.log(`Verification: ${detail.verification ? detail.verification.status : "not_run"}`);
+  console.log(`Report: ${detail.reportExists ? "generated" : "not_run"}`);
+}
 
 function statusIcon(status: DoctorStatus): string {
   switch (status) {

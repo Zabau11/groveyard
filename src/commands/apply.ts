@@ -1,11 +1,10 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 import { execa } from "execa";
 import { z } from "zod";
-import { getRunStatus, listRunStatuses } from "./status.js";
+import { selectRun } from "./select-run.js";
+import { getRunStatus } from "./status.js";
 
 const compositionSummarySchema = z.object({
   status: z.enum(["composed", "composed_with_skips", "failed"]),
@@ -25,7 +24,7 @@ type ApplyResult = {
 };
 
 export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise<ApplyResult> {
-  const runId = options.run ?? (await selectRun(cwd));
+  const runId = options.run ?? (await selectRun(cwd, { kind: "composed", action: "apply" }));
   const detail = await getRunStatus(runId, cwd);
 
   if (!detail.composition) {
@@ -68,37 +67,6 @@ export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise
     files: await changedFiles(cwd),
     patchPath: join(cwd, ".agentx", "runs", runId, "agents"),
   };
-}
-
-async function selectRun(cwd: string): Promise<string> {
-  const runs = (await listRunStatuses(cwd)).filter((run) => run.composed).reverse();
-  if (runs.length === 0) {
-    throw new Error("No composed AgentX runs found. Run agentx compose first, or pass --run <run-id>.");
-  }
-
-  if (!process.stdin.isTTY) {
-    const choices = runs.map((run, index) => `${index + 1}. ${run.runId} (${run.status}, verification=${run.verified})`).join("\n");
-    throw new Error(`No --run provided and stdin is not interactive. Available composed runs:\n${choices}`);
-  }
-
-  console.log("Select a run to apply:");
-  for (const [index, run] of runs.entries()) {
-    console.log(`${index + 1}. ${run.runId} (${run.status}, verification=${run.verified})`);
-  }
-
-  const rl = createInterface({ input, output });
-  try {
-    while (true) {
-      const answer = (await rl.question("Run number: ")).trim();
-      const selected = Number.parseInt(answer, 10);
-      if (Number.isInteger(selected) && selected >= 1 && selected <= runs.length) {
-        return runs[selected - 1]!.runId;
-      }
-      console.log(`Enter a number from 1 to ${runs.length}.`);
-    }
-  } finally {
-    rl.close();
-  }
 }
 
 async function ensureCleanWorkingTree(cwd: string): Promise<void> {
