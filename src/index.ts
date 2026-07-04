@@ -19,6 +19,7 @@ import { generateReport } from "./commands/report.js";
 import { runPlanFile, type RunProgressEvent } from "./commands/run.js";
 import { selectRun } from "./commands/select-run.js";
 import { getRunStatus, listRunStatuses } from "./commands/status.js";
+import { launchTui } from "./commands/tui.js";
 import { validatePlanFile } from "./commands/validate-plan.js";
 import { verifyRun } from "./commands/verify.js";
 
@@ -27,7 +28,10 @@ const program = new Command();
 program
   .name("agentx")
   .description("Coordinate multiple coding agents with isolated workspaces and ownership checks.")
-  .version("0.1.0");
+  .version("0.1.0")
+  .action(async () => {
+    await launchTui({ cwd: process.cwd() });
+  });
 
 program
   .command("init")
