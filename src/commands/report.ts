@@ -81,11 +81,11 @@ type ReportResult = {
 };
 
 export async function generateReport(runId: string, cwd: string): Promise<ReportResult> {
-  const runRoot = join(cwd, ".agentx", "runs", runId);
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
   const runSummaryPath = join(runRoot, "summary.json");
 
   if (!(await pathExists(runSummaryPath))) {
-    throw new Error(`Run summary not found: .agentx/runs/${runId}/summary.json`);
+    throw new Error(`Run summary not found: .paraflow/runs/${runId}/summary.json`);
   }
 
   const run = runSummarySchema.parse(JSON.parse(await readFile(runSummaryPath, "utf8")));
@@ -93,9 +93,9 @@ export async function generateReport(runId: string, cwd: string): Promise<Report
   const verification = await readOptionalJson(join(runRoot, "verification.json"), verificationSummarySchema);
   const markdown = renderReport(run, composition, verification);
   const reportPath = join(runRoot, "report.md");
-  const mirrorPath = join(cwd, ".agentx", "reports", `${runId}.md`);
+  const mirrorPath = join(cwd, ".paraflow", "reports", `${runId}.md`);
 
-  await mkdir(join(cwd, ".agentx", "reports"), { recursive: true });
+  await mkdir(join(cwd, ".paraflow", "reports"), { recursive: true });
   await writeFile(reportPath, markdown);
   await writeFile(mirrorPath, markdown);
 
@@ -114,7 +114,7 @@ function renderReport(run: RunSummary, composition: CompositionSummary | undefin
   const preventedIssues = run.agents.flatMap((agent) => agent.violations.map((violation) => ({ agent: agent.agent, violation })));
 
   const lines: string[] = [
-    `# AgentX Run Report`,
+    `# Paraflow Run Report`,
     "",
     `Run: \`${run.runId}\``,
     "",

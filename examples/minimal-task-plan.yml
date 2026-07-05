@@ -6,7 +6,7 @@ verify:
   - "npm run typecheck"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "src/generated/**"
   - "contracts/**"
   - "package.json"

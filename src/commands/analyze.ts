@@ -20,9 +20,9 @@ export type RepoAnalysis = {
   notes: string[];
 };
 
-const ignoredDirectories = ["**/node_modules/**", "**/.git/**", "**/.agentx/**", "**/dist/**", "**/build/**", "examples/**", "**/examples/**"];
+const ignoredDirectories = ["**/node_modules/**", "**/.git/**", "**/.paraflow/**", "**/dist/**", "**/build/**", "examples/**", "**/examples/**"];
 
-const defaultProtected = [".agentx/**", "contracts/**", "src/generated/**", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb"];
+const defaultProtected = [".paraflow/**", "contracts/**", "src/generated/**", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lockb"];
 
 type AnalyzeOptions = {
   write?: boolean;
@@ -48,8 +48,8 @@ export async function analyzeRepository(cwd: string, options: AnalyzeOptions = {
   };
 
   if (options.write !== false) {
-    await mkdir(join(cwd, ".agentx"), { recursive: true });
-    await writeFile(join(cwd, ".agentx", "analysis.json"), `${JSON.stringify(analysis, null, 2)}\n`);
+    await mkdir(join(cwd, ".paraflow"), { recursive: true });
+    await writeFile(join(cwd, ".paraflow", "analysis.json"), `${JSON.stringify(analysis, null, 2)}\n`);
   }
 
   return analysis;

@@ -49,24 +49,24 @@ type CompositionSummary = {
 };
 
 export async function composeRun(runId: string, cwd: string): Promise<CompositionSummary> {
-  const runRoot = join(cwd, ".agentx", "runs", runId);
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
   const summaryPath = join(runRoot, "summary.json");
 
   if (!(await pathExists(summaryPath))) {
-    throw new Error(`Run summary not found: .agentx/runs/${runId}/summary.json`);
+    throw new Error(`Run summary not found: .paraflow/runs/${runId}/summary.json`);
   }
 
   const runSummary = runSummarySchema.parse(JSON.parse(await readFile(summaryPath, "utf8")));
   const taskPlan = taskPlanSchema.parse(parseYaml(await readFile(join(runRoot, "task-plan.yml"), "utf8")));
-  const branch = `agentx/${runSummary.runId}`;
-  const workspacePath = join(cwd, ".agentx", "worktrees", runSummary.runId, "integration");
+  const branch = `paraflow/${runSummary.runId}`;
+  const workspacePath = join(cwd, ".paraflow", "worktrees", runSummary.runId, "integration");
 
   if (await pathExists(workspacePath)) {
-    throw new Error(`Integration worktree already exists: .agentx/worktrees/${runSummary.runId}/integration`);
+    throw new Error(`Integration worktree already exists: .paraflow/worktrees/${runSummary.runId}/integration`);
   }
 
   await ensureGitRepository(cwd);
-  await mkdir(join(cwd, ".agentx", "worktrees", runSummary.runId), { recursive: true });
+  await mkdir(join(cwd, ".paraflow", "worktrees", runSummary.runId), { recursive: true });
   await createIntegrationWorktree(cwd, workspacePath, branch, runSummary.baseBranch);
 
   const applied: AppliedPatch[] = [];
@@ -144,7 +144,7 @@ async function runGenerators(workspacePath: string, agents: AgentRunSummary[], r
 async function ensureGitRepository(cwd: string): Promise<void> {
   const result = await execa("git", ["rev-parse", "--is-inside-work-tree"], { cwd, reject: false });
   if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
-    throw new Error("agentx compose must be executed inside a Git repository.");
+    throw new Error("paraflow compose must be executed inside a Git repository.");
   }
 }
 

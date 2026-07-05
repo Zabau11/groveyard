@@ -1,12 +1,12 @@
 version: 1
 
-# Commands run by agentx verify. Keep this empty until the project-specific
+# Commands run by paraflow verify. Keep this empty until the project-specific
 # checks are known.
 verify: []
 
 # Paths protected for every normal agent run.
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "contracts/**"
   - "src/generated/**"
   - "package.json"

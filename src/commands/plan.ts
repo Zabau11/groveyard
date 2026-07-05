@@ -46,7 +46,7 @@ export async function previewDraftPlan(goal: string, cwd: string, options: Pick<
 
 export async function createDraftPlan(goal: string, cwd: string, options: CreatePlanOptions = {}): Promise<CreatePlanResult> {
   const draft = await buildDraftPlan(goal, cwd, { adapter: options.adapter, planner: options.planner, writeAnalysis: true });
-  const outputPath = options.out ?? join(".agentx", "task-plan.yml");
+  const outputPath = options.out ?? join(".paraflow", "task-plan.yml");
   const fullOutputPath = isAbsolute(outputPath) ? outputPath : join(cwd, outputPath);
   await mkdir(dirname(fullOutputPath), { recursive: true });
   await writeFile(fullOutputPath, stringifyYaml(draft.plan));
@@ -66,7 +66,7 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
   const planner = await selectModulesForGoal(goal, analysis, { cwd, mode: options.planner });
   const selectedModules = planner.modules;
   if (selectedModules.length === 0) {
-    throw new Error("No safe module boundaries found. Run agentx analyze and create a task plan manually.");
+    throw new Error("No safe module boundaries found. Run paraflow analyze and create a task plan manually.");
   }
 
   const runId = createRunId(goal);
@@ -207,7 +207,7 @@ function inferTaskProfile(goal: string, modules: ModuleCandidate[]): TaskProfile
       kind: "schema",
       label: "schema/configuration",
       focus: "Update schemas, validation contracts, and related config handling.",
-      mayRead: ["README.md", "IDEA.md", "src/schemas/**", "src/validation/**", "src/commands/validate-plan.ts", ".agentx/schemas/**"],
+      mayRead: ["README.md", "IDEA.md", "src/schemas/**", "src/validation/**", "src/commands/validate-plan.ts", ".paraflow/schemas/**"],
       preferredOutputs: ["agent-output/manifest.json"],
       extraProtected: ["src/commands/tui.tsx"],
       verificationHint: "Schema task: preserve backward compatibility where possible.",
@@ -320,7 +320,7 @@ function createRunId(goal: string): string {
     .slice(0, 48);
   const suffix = new Date().toISOString().replaceAll(/[-:]/g, "").slice(0, 15);
 
-  return `${slug || "agentx-run"}-${suffix}`;
+  return `${slug || "paraflow-run"}-${suffix}`;
 }
 
 function sanitizeAgentName(value: string): string {

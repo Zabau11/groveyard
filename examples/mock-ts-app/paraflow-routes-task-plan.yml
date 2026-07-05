@@ -6,7 +6,7 @@ verify:
   - "../../../../node_modules/.bin/tsc -p examples/mock-ts-app/tsconfig.json"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "examples/mock-ts-app/src/generated/**"
   - "examples/mock-ts-app/package.json"
   - "examples/mock-ts-app/tsconfig.json"

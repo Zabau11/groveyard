@@ -52,11 +52,11 @@ type RunPlanOptions = {
 
 export async function runPlanFile(planPath: string, cwd: string, options: RunPlanOptions = {}): Promise<RunSummary> {
   const { plan } = await validatePlanFile(planPath, cwd);
-  const runRoot = join(cwd, ".agentx", "runs", plan.runId);
-  const worktreeRoot = join(cwd, ".agentx", "worktrees", plan.runId);
+  const runRoot = join(cwd, ".paraflow", "runs", plan.runId);
+  const worktreeRoot = join(cwd, ".paraflow", "worktrees", plan.runId);
 
   if (await pathExists(runRoot)) {
-    throw new Error(`Run already exists: .agentx/runs/${plan.runId}`);
+    throw new Error(`Run already exists: .paraflow/runs/${plan.runId}`);
   }
 
   await ensureGitRepository(cwd);
@@ -120,7 +120,7 @@ async function runAgent(
   await mkdir(agentRunRoot, { recursive: true });
   await createWorktree(cwd, workspacePath, plan.baseBranch);
   options.onProgress?.({ type: "agent_started", agent: agentName, index, total, workspacePath, owns: agent.owns });
-  const taskFile = ".agentx-task.md";
+  const taskFile = ".paraflow-task.md";
   await writeFile(join(workspacePath, taskFile), renderAgentTask(agentName, agent, plan));
   const resolvedCommand = await resolveAgentCommandDetails(cwd, {
     agentName,
@@ -270,7 +270,7 @@ async function applyDuplicateManifestIdRejections(agents: AgentRunSummary[], run
 async function ensureGitRepository(cwd: string): Promise<void> {
   const result = await execa("git", ["rev-parse", "--is-inside-work-tree"], { cwd, reject: false });
   if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
-    throw new Error("agentx run must be executed inside a Git repository.");
+    throw new Error("paraflow run must be executed inside a Git repository.");
   }
 }
 
@@ -310,12 +310,12 @@ async function getChangedFiles(workspacePath: string): Promise<string[]> {
 
 async function exportPatch(workspacePath: string): Promise<string> {
   await execa("git", ["add", "--intent-to-add", "."], { cwd: workspacePath });
-  const result = await execa("git", ["diff", "--binary", "HEAD", "--", ".", ":(exclude).agentx-task.md", ":(exclude)agent-output/**"], { cwd: workspacePath });
+  const result = await execa("git", ["diff", "--binary", "HEAD", "--", ".", ":(exclude).paraflow-task.md", ":(exclude)agent-output/**"], { cwd: workspacePath });
   return result.stdout.length > 0 ? `${result.stdout}\n` : "";
 }
 
 function addAgentChangedFile(files: Set<string>, filePath: string): void {
-  if (filePath === ".agentx-task.md" || filePath.startsWith("agent-output/")) {
+  if (filePath === ".paraflow-task.md" || filePath.startsWith("agent-output/")) {
     return;
   }
 

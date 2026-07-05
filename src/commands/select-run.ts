@@ -59,10 +59,10 @@ function formatRunChoice(run: RunStatusListItem): string {
 function noRunsMessage(kind: RunSelectionKind, action: string): string {
   switch (kind) {
     case "any":
-      return `No AgentX runs found to ${action}.`;
+      return `No Paraflow runs found to ${action}.`;
     case "composable":
-      return `No uncomposed AgentX runs with accepted agents found. Run agentx start first, or pass --run <run-id>.`;
+      return `No uncomposed Paraflow runs with accepted agents found. Run paraflow start first, or pass --run <run-id>.`;
     case "composed":
-      return `No composed AgentX runs found. Run agentx compose first, or pass --run <run-id>.`;
+      return `No composed Paraflow runs found. Run paraflow compose first, or pass --run <run-id>.`;
   }
 }

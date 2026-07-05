@@ -1,4 +1,4 @@
-# AgentX Orchestrator
+# Paraflow Orchestrator
 
 Local-first CLI for coordinating multiple coding agents with isolated workspaces, ownership checks, and integration reports.
 

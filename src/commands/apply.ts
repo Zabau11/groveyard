@@ -28,7 +28,7 @@ export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise
   const detail = await getRunStatus(runId, cwd);
 
   if (!detail.composition) {
-    throw new Error(`Run "${runId}" has not been composed yet. Run agentx compose --run ${runId} first.`);
+    throw new Error(`Run "${runId}" has not been composed yet. Run paraflow compose --run ${runId} first.`);
   }
 
   if (detail.composition.status === "failed") {
@@ -36,12 +36,12 @@ export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise
   }
 
   if (!options.force && detail.verification?.status !== "passed") {
-    throw new Error(`Run "${runId}" has not passed verification. Run agentx verify --run ${runId}, or use --force.`);
+    throw new Error(`Run "${runId}" has not passed verification. Run paraflow verify --run ${runId}, or use --force.`);
   }
 
   await ensureCleanWorkingTree(cwd);
 
-  const compositionPath = join(cwd, ".agentx", "runs", runId, "composition.json");
+  const compositionPath = join(cwd, ".paraflow", "runs", runId, "composition.json");
   const composition = compositionSummarySchema.parse(JSON.parse(await readFile(compositionPath, "utf8")));
   if (!(await pathExists(composition.workspacePath))) {
     throw new Error(`Integration workspace not found: ${composition.workspacePath}`);
@@ -52,7 +52,7 @@ export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise
     throw new Error(`Run "${runId}" has no integration changes to apply.`);
   }
 
-  const tempDir = await mkdtemp(join(tmpdir(), "agentx-apply-"));
+  const tempDir = await mkdtemp(join(tmpdir(), "paraflow-apply-"));
   const patchPath = join(tempDir, `${runId}.patch`);
   await writeFile(patchPath, patch);
 
@@ -65,7 +65,7 @@ export async function applyRun(cwd: string, options: ApplyOptions = {}): Promise
   return {
     runId,
     files: await changedFiles(cwd),
-    patchPath: join(cwd, ".agentx", "runs", runId, "agents"),
+    patchPath: join(cwd, ".paraflow", "runs", runId, "agents"),
   };
 }
 

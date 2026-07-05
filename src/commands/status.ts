@@ -55,7 +55,7 @@ export type RunStatusListItem = {
 };
 
 export async function listRunStatuses(cwd: string): Promise<RunStatusListItem[]> {
-  const runsRoot = join(cwd, ".agentx", "runs");
+  const runsRoot = join(cwd, ".paraflow", "runs");
   if (!(await pathExists(runsRoot))) {
     return [];
   }
@@ -82,7 +82,7 @@ export async function listRunStatuses(cwd: string): Promise<RunStatusListItem[]>
 export async function getRunStatus(runId: string, cwd: string): Promise<RunStatusDetail> {
   const detail = await readRunStatus(runId, cwd);
   if (!detail) {
-    throw new Error(`Run summary not found: .agentx/runs/${runId}/summary.json`);
+    throw new Error(`Run summary not found: .paraflow/runs/${runId}/summary.json`);
   }
 
   return detail;
@@ -107,7 +107,7 @@ function toListItem(detail: RunStatusDetail): RunStatusListItem {
 }
 
 async function readRunStatus(runId: string, cwd: string): Promise<RunStatusDetail | undefined> {
-  const runRoot = join(cwd, ".agentx", "runs", runId);
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
   const summaryPath = join(runRoot, "summary.json");
   if (!(await pathExists(summaryPath))) {
     return undefined;

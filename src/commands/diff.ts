@@ -53,11 +53,11 @@ export type DiffResult = {
 
 export async function diffRun(cwd: string, options: DiffOptions = {}): Promise<DiffResult> {
   const runId = options.run ?? (await selectRun(cwd, { kind: "any", action: "diff" }));
-  const runRoot = join(cwd, ".agentx", "runs", runId);
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
   const summaryPath = join(runRoot, "summary.json");
 
   if (!(await pathExists(summaryPath))) {
-    throw new Error(`Run summary not found: .agentx/runs/${runId}/summary.json`);
+    throw new Error(`Run summary not found: .paraflow/runs/${runId}/summary.json`);
   }
 
   const run = runSummarySchema.parse(JSON.parse(await readFile(summaryPath, "utf8")));

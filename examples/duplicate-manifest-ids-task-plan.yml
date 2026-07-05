@@ -3,7 +3,7 @@ runId: "example-duplicate-manifest-ids"
 baseBranch: "main"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "src/generated/**"
   - "package.json"
   - "package-lock.json"

@@ -1,10 +1,10 @@
 {
-  "name": "agentx-orchestrator",
+  "name": "paraflow-orchestrator",
   "version": "0.1.0",
   "description": "A local-first CLI for coordinating multiple coding agents safely.",
   "type": "module",
   "bin": {
-    "agentx": "./dist/index.js"
+    "paraflow": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

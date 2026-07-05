@@ -6,7 +6,7 @@ verify:
   - "test -f src/generated/routes.ts"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "src/generated/**"
   - "package.json"
   - "package-lock.json"

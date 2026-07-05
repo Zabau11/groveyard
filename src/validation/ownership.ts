@@ -100,9 +100,9 @@ export function renderAgentTask(agentName: string, agent: AgentPlan, plan: TaskP
     2,
   );
 
-  return `# AgentX Task: ${agentName}
+  return `# Paraflow Task: ${agentName}
 
-You are running inside an isolated AgentX worktree. Your output will be accepted only if it stays inside the ownership rules below and includes a valid manifest.
+You are running inside an isolated Paraflow worktree. Your output will be accepted only if it stays inside the ownership rules below and includes a valid manifest.
 
 ## Task
 
@@ -171,7 +171,7 @@ ${blockedManifestExample}
 
 ## Review Context
 
-AgentX will validate changed files, validate the manifest schema, reject duplicate manifest IDs, compose accepted patches, run verification commands, and produce a report.
+Paraflow will validate changed files, validate the manifest schema, reject duplicate manifest IDs, compose accepted patches, run verification commands, and produce a report.
 `;
 }
 

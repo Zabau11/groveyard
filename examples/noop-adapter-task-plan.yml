@@ -3,7 +3,7 @@ runId: "example-noop-adapter"
 baseBranch: "main"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "package.json"
   - "package-lock.json"
 

@@ -1,7 +1,7 @@
 node_modules/
 dist/
-.agentx/runs/
-.agentx/worktrees/
+.paraflow/runs/
+.paraflow/worktrees/
 .DS_Store
 .env
 .env.*

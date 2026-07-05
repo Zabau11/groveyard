@@ -35,7 +35,7 @@
     "tsconfig.json"
   ],
   "protected": [
-    ".agentx/**",
+    ".paraflow/**",
     "contracts/**",
     "src/generated/**",
     "package.json",

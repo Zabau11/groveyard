@@ -55,16 +55,16 @@ type AgentColumnState = {
 
 export async function launchTui(options: TuiOptions): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    console.log("AgentX Console needs an interactive terminal.");
-    console.log("Run agentx --help to use the scriptable CLI.");
+    console.log("Paraflow Console needs an interactive terminal.");
+    console.log("Run paraflow --help to use the scriptable CLI.");
     return;
   }
 
-  const instance = render(<AgentXApp cwd={options.cwd} />);
+  const instance = render(<ParaflowApp cwd={options.cwd} />);
   await instance.waitUntilExit();
 }
 
-function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
+function ParaflowApp({ cwd }: { cwd: string }): React.ReactElement {
   const { exit } = useApp();
   const [screen, setScreen] = useState<Screen>("home");
   const [command, setCommand] = useState("");
@@ -196,7 +196,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       case "unavailable":
         setActionTitle("Need A Full Task");
         setActionLines([
-          `"${intent.action}" is not enough for AgentX to plan safely.`,
+          `"${intent.action}" is not enough for Paraflow to plan safely.`,
           "",
           "Type a full task, for example:",
           "add retry support for failed agents",
@@ -256,7 +256,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
         const dirtyFiles = await readDirtyFiles(cwd);
         setActionTitle("Apply Blocked");
         setActionLines([
-          "AgentX will not apply a run into a dirty checkout.",
+          "Paraflow will not apply a run into a dirty checkout.",
           "Save, stash, or discard the current changes first.",
           "",
           "Dirty files:",
@@ -265,7 +265,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
           "Useful commands:",
           "git status --short",
           "git stash push -u",
-          `agentx apply --run ${currentRun.runId}`,
+          `paraflow apply --run ${currentRun.runId}`,
         ]);
         setScreen("action");
         return;
@@ -441,7 +441,7 @@ function Header(): React.ReactElement {
       <Text color="blue">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
       <Box>
         <Text inverse bold>
-          {" AGENTX "}
+          {" PARAFLOW "}
         </Text>
         <Text color="gray"> Task-native orchestration for coding agents</Text>
       </Box>
@@ -460,7 +460,7 @@ function HomeScreen({ home, command }: { home: HomeModel; command: string }): Re
           <Text bold>Example</Text>
           <Text>add retry support for failed agents</Text>
           <Box height={1} />
-          <Text color="gray">AgentX will preview the plan first. Nothing runs until you confirm.</Text>
+          <Text color="gray">Paraflow will preview the plan first. Nothing runs until you confirm.</Text>
         </Panel>
         <Panel title="Workspace" width={34}>
           <StatusRow status={home.doctorStatus} detail="doctor" />
@@ -495,7 +495,7 @@ function LoadingScreen({ message }: { message: string }): React.ReactElement {
   return (
     <Box flexDirection="column">
       <Text color="cyan">● {message}</Text>
-      <Text color="gray">AgentX is working through the repository state.</Text>
+      <Text color="gray">Paraflow is working through the repository state.</Text>
     </Box>
   );
 }
@@ -543,7 +543,7 @@ function RunsScreen({ runs }: { runs: RunStatusListItem[] }): React.ReactElement
     <Box flexDirection="column">
       <Panel title="Runs">
         {runs.length === 0 ? (
-          <Text color="gray">No saved AgentX runs yet.</Text>
+          <Text color="gray">No saved Paraflow runs yet.</Text>
         ) : (
           runs.slice(-10).map((run) => (
             <Box key={run.runId} flexDirection="column" marginBottom={1}>
@@ -591,13 +591,13 @@ function DoctorScreen({ report }: { report: DoctorReport }): React.ReactElement 
 function HelpScreen(): React.ReactElement {
   return (
     <Box flexDirection="column">
-      <Panel title="How to use AgentX">
-        <Text color="gray">Type the task you want done. AgentX always previews before running.</Text>
+      <Panel title="How to use Paraflow">
+        <Text color="gray">Type the task you want done. Paraflow always previews before running.</Text>
         <Text color="gray">Use slash commands only for navigation.</Text>
       </Panel>
       <Box marginTop={1} flexDirection="column">
         <CommandExample label="TASK" value="add retry support for failed agents" />
-        <CommandExample label="TASK" value="create an agentx diff command" />
+        <CommandExample label="TASK" value="create an paraflow diff command" />
         <CommandExample label="NAV" value="/runs" />
         <CommandExample label="NAV" value="/doctor" />
       </Box>
@@ -805,7 +805,7 @@ function CommandBar({ value }: { value: string }): React.ReactElement {
     <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       <Box>
         <Text inverse bold>
-          {" AGENTX "}
+          {" PARAFLOW "}
         </Text>
         <Text color="gray"> Describe the task</Text>
       </Box>
@@ -908,11 +908,11 @@ async function detectPlannerLabel(cwd: string): Promise<string> {
     // Missing or unreadable .env should not block the console.
   }
 
-  return env.AGENTX_PLANNER_PROVIDER === "mistral" || env.MISTRAL_API_KEY ? "mistral" : "local";
+  return env.PARAFLOW_PLANNER_PROVIDER === "mistral" || env.MISTRAL_API_KEY ? "mistral" : "local";
 }
 
 async function readRunDiff(cwd: string, runId: string): Promise<string[]> {
-  const compositionPath = join(cwd, ".agentx", "runs", runId, "composition.json");
+  const compositionPath = join(cwd, ".paraflow", "runs", runId, "composition.json");
   const composition = JSON.parse(await readFile(compositionPath, "utf8")) as { workspacePath?: string };
   if (!composition.workspacePath) {
     throw new Error(`Run "${runId}" does not have a composed workspace.`);
@@ -932,7 +932,7 @@ async function readRunDiff(cwd: string, runId: string): Promise<string[]> {
 
   if (diff.stdout.split("\n").length > 80) {
     lines.push("");
-    lines.push("Diff truncated. Use agentx status/apply or inspect the integration workspace for the full patch.");
+    lines.push("Diff truncated. Use paraflow status/apply or inspect the integration workspace for the full patch.");
   }
 
   return lines;

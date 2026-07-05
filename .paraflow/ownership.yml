@@ -3,7 +3,7 @@ version: 1
 domains: {}
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "contracts/**"
   - "src/generated/**"
   - "package.json"

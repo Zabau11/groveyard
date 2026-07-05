@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AgentX Agent Manifest",
+  "title": "Paraflow Agent Manifest",
   "type": "object",
   "required": [
     "version",

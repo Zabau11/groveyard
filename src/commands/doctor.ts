@@ -42,8 +42,8 @@ export async function runDoctor(cwd: string): Promise<DoctorReport> {
         : {
             status: "fail",
             label: "Git repository",
-            detail: "AgentX needs git worktrees, but this directory is not a git repository.",
-            fix: "Run git init, commit your base project, then rerun agentx doctor.",
+            detail: "Paraflow needs git worktrees, but this directory is not a git repository.",
+            fix: "Run git init, commit your base project, then rerun paraflow doctor.",
           },
       git.isRepo && git.dirtyFiles > 0
         ? {
@@ -61,11 +61,11 @@ export async function runDoctor(cwd: string): Promise<DoctorReport> {
   });
 
   const metadataChecks: DoctorCheck[] = [
-    await existsCheck(cwd, ".agentx/config.yml", "AgentX config", "Run agentx init or agentx bootstrap."),
-    await existsCheck(cwd, ".agentx/ownership.yml", "Ownership config", "Run agentx init or agentx bootstrap."),
-    await existsCheck(cwd, ".agentx/schemas/manifest.schema.json", "Manifest schema", "Run agentx init or agentx bootstrap."),
+    await existsCheck(cwd, ".paraflow/config.yml", "Paraflow config", "Run paraflow init or paraflow bootstrap."),
+    await existsCheck(cwd, ".paraflow/ownership.yml", "Ownership config", "Run paraflow init or paraflow bootstrap."),
+    await existsCheck(cwd, ".paraflow/schemas/manifest.schema.json", "Manifest schema", "Run paraflow init or paraflow bootstrap."),
   ];
-  sections.push({ title: "AgentX Metadata", checks: metadataChecks });
+  sections.push({ title: "Paraflow Metadata", checks: metadataChecks });
 
   try {
     analysis = await analyzeRepository(cwd, { write: false });
@@ -79,7 +79,7 @@ export async function runDoctor(cwd: string): Promise<DoctorReport> {
           status: "fail",
           label: "Repository analysis",
           detail: error instanceof Error ? error.message : "Could not analyze repository.",
-          fix: "Fix invalid project metadata, then rerun agentx doctor.",
+          fix: "Fix invalid project metadata, then rerun paraflow doctor.",
         },
       ],
     });
@@ -102,7 +102,7 @@ function buildProjectSection(cwd: string, analysis: RepoAnalysis): DoctorSection
           status: "warn",
           label: "Package manager",
           detail: "No package.json or known lockfile detected.",
-          fix: "Run agentx bootstrap for a minimal TypeScript app, or add project metadata.",
+          fix: "Run paraflow bootstrap for a minimal TypeScript app, or add project metadata.",
         }
       : {
           status: "pass",
@@ -134,7 +134,7 @@ function buildProjectSection(cwd: string, analysis: RepoAnalysis): DoctorSection
           status: "info",
           label: "Route generation",
           detail: "No generated route file detected.",
-          fix: "Use agentx bootstrap or add src/generated/routes.ts if this repo should compose routes from manifests.",
+          fix: "Use paraflow bootstrap or add src/generated/routes.ts if this repo should compose routes from manifests.",
         },
   ];
 
@@ -201,7 +201,7 @@ async function buildAdapterSection(cwd: string): Promise<DoctorSection> {
             status: "warn",
             label: "Configured adapters",
             detail: "No adapters are configured.",
-            fix: "Run agentx init or agentx bootstrap.",
+            fix: "Run paraflow init or paraflow bootstrap.",
           },
     );
 
@@ -229,7 +229,7 @@ async function buildAdapterSection(cwd: string): Promise<DoctorSection> {
       status: "fail",
       label: "Adapter config",
       detail: error instanceof Error ? error.message : "Could not read adapter config.",
-      fix: "Fix .agentx/config.yml, then rerun agentx doctor.",
+      fix: "Fix .paraflow/config.yml, then rerun paraflow doctor.",
     });
   }
 
@@ -256,14 +256,14 @@ async function buildRunSection(cwd: string): Promise<DoctorSection> {
         },
   );
 
-  const worktreeCount = await countDirectoryChildren(join(cwd, ".agentx", "worktrees"));
+  const worktreeCount = await countDirectoryChildren(join(cwd, ".paraflow", "worktrees"));
   checks.push(
     worktreeCount > 0
       ? {
           status: "warn",
           label: "Worktree artifacts",
-          detail: `${worktreeCount} worktree director${worktreeCount === 1 ? "y" : "ies"} found under .agentx/worktrees.`,
-          fix: "Run agentx clean --run <runId> after you are done with a run.",
+          detail: `${worktreeCount} worktree director${worktreeCount === 1 ? "y" : "ies"} found under .paraflow/worktrees.`,
+          fix: "Run paraflow clean --run <runId> after you are done with a run.",
         }
       : {
           status: "pass",

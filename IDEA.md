@@ -269,7 +269,7 @@ The product should not require users to hand-write YAML in the normal path.
 The preferred user experience is:
 
 ```bash
-agentx plan "Add password reset, invoice downloads, and dashboard summary cards"
+paraflow plan "Add password reset, invoice downloads, and dashboard summary cards"
 ```
 
 The product then:
@@ -700,7 +700,7 @@ For the MVP, the product should not move, rename, or restructure the user's sour
 Default MVP additions:
 
 ```text
-.agentx/
+.paraflow/
   task-plan.yml
   ownership.yml
   runs/
@@ -808,7 +808,7 @@ The orchestrator is responsible for coordination and composition, not for random
 
 In the MVP, the orchestrator owns:
 
-- `.agentx/**`;
+- `.paraflow/**`;
 - isolated run directories;
 - task plans;
 - ownership maps;
@@ -873,14 +873,14 @@ agents:
 ### 10.2 Orchestrator Creates Isolated Workspaces
 
 ```bash
-agentx run .agent-orchestrator/task-plan.yml
+paraflow run .agent-orchestrator/task-plan.yml
 ```
 
 Internally:
 
 ```bash
-git worktree add .agentx/worktrees/auth-agent main
-git worktree add .agentx/worktrees/billing-agent main
+git worktree add .paraflow/worktrees/auth-agent main
+git worktree add .paraflow/worktrees/billing-agent main
 ```
 
 Each workspace has write permissions only for its owned paths.
@@ -890,7 +890,7 @@ Each workspace has write permissions only for its owned paths.
 Example output:
 
 ```text
-.agentx/worktrees/auth-agent/
+.paraflow/worktrees/auth-agent/
   src/features/auth/password-reset.ts
   tests/features/auth/password-reset.test.ts
   agent-output/manifest.json
@@ -912,7 +912,7 @@ Checks:
 ### 10.5 Orchestrator Composes
 
 ```bash
-agentx compose
+paraflow compose
 ```
 
 Generated result:
@@ -940,7 +940,7 @@ pnpm build
 ### 10.7 Orchestrator Opens PR
 
 ```bash
-agentx pr
+paraflow pr
 ```
 
 PR description includes:
@@ -965,14 +965,14 @@ The CLI is the first product surface.
 Suggested commands:
 
 ```bash
-agentx init
-agentx plan create
-agentx run task-plan.yml
-agentx status
-agentx compose
-agentx verify
-agentx report
-agentx pr
+paraflow init
+paraflow plan create
+paraflow run task-plan.yml
+paraflow status
+paraflow compose
+paraflow verify
+paraflow report
+paraflow pr
 ```
 
 Responsibilities:
@@ -1184,7 +1184,7 @@ The PR publisher creates a clear review artifact.
 PR title:
 
 ```text
-[agentx] Compose password reset and billing invoice tasks
+[paraflow] Compose password reset and billing invoice tasks
 ```
 
 PR body:
@@ -1266,7 +1266,7 @@ Run configured commands.
 
 8. **Markdown report**
 
-Produce `agentx-report.md`.
+Produce `paraflow-report.md`.
 
 ### 12.3 MVP Nice-to-Haves
 
@@ -1316,28 +1316,28 @@ Get one clean report or PR.
 ### Final MVP Commands
 
 ```bash
-agentx init
-agentx analyze
-agentx plan "Add password reset, invoice downloads, and dashboard summary cards"
-agentx plan review
-agentx run
-agentx status
-agentx compose
-agentx verify
-agentx report
+paraflow init
+paraflow analyze
+paraflow plan "Add password reset, invoice downloads, and dashboard summary cards"
+paraflow plan review
+paraflow run
+paraflow status
+paraflow compose
+paraflow verify
+paraflow report
 ```
 
 Optional later command:
 
 ```bash
-agentx pr
+paraflow pr
 ```
 
 ### Final MVP User Flow
 
 ```text
 1. User installs CLI.
-2. User runs agentx init.
+2. User runs paraflow init.
 3. Product scans repo and identifies likely modules, tests, shared files, generated files, package files, and contracts.
 4. User describes a development goal.
 5. Product proposes a task plan with N agents.
@@ -1414,7 +1414,7 @@ protected:
 agents:
   auth:
     adapter: "generic"
-    command: "claude-code run --task .agentx/runs/current/agents/auth/task.md"
+    command: "claude-code run --task .paraflow/runs/current/agents/auth/task.md"
     task: "Implement password reset flow."
     owns:
       - "src/features/auth/**"
@@ -1431,7 +1431,7 @@ agents:
 
   billing:
     adapter: "generic"
-    command: "claude-code run --task .agentx/runs/current/agents/billing/task.md"
+    command: "claude-code run --task .paraflow/runs/current/agents/billing/task.md"
     task: "Add invoice PDF download page."
     owns:
       - "src/features/billing/**"
@@ -1448,7 +1448,7 @@ agents:
 
   dashboard:
     adapter: "generic"
-    command: "claude-code run --task .agentx/runs/current/agents/dashboard/task.md"
+    command: "claude-code run --task .paraflow/runs/current/agents/dashboard/task.md"
     task: "Add dashboard summary cards."
     owns:
       - "src/features/dashboard/**"
@@ -1467,7 +1467,7 @@ agents:
 ### Final MVP Report Example
 
 ```markdown
-# AgentX Run Report
+# Paraflow Run Report
 
 Run: password-reset-invoices-dashboard
 
@@ -1564,7 +1564,7 @@ The product proposed 3 agents because the requested work mapped to 3 independent
 The MVP is successful when a user can:
 
 1. install the CLI in an existing TypeScript repository;
-2. run `agentx init`;
+2. run `paraflow init`;
 3. ask for a multi-part feature plan using natural language;
 4. receive a generated YAML task plan;
 5. approve the proposed number of agents;
@@ -1632,17 +1632,17 @@ Suggested libraries:
 Commands:
 
 ```bash
-agentx init
-agentx validate-plan
-agentx compose
-agentx verify
-agentx report
+paraflow init
+paraflow validate-plan
+paraflow compose
+paraflow verify
+paraflow report
 ```
 
 Tasks:
 
 1. Implement config loading.
-2. Implement `agentx init`.
+2. Implement `paraflow init`.
 3. Implement plan validation.
 4. Implement manifest loading.
 5. Implement duplicate ID checks.
@@ -1652,7 +1652,7 @@ Tasks:
 Deliverables:
 
 - installable CLI;
-- `agentx init` creates `.agent-orchestrator`;
+- `paraflow init` creates `.agent-orchestrator`;
 - validation and generation work on sample app.
 
 Acceptance criteria:
@@ -1671,8 +1671,8 @@ Acceptance criteria:
 Commands:
 
 ```bash
-agentx run task-plan.yml
-agentx status
+paraflow run task-plan.yml
+paraflow status
 ```
 
 Tasks:
@@ -1684,12 +1684,12 @@ Tasks:
 5. Collect changed files.
 6. Validate changed files against ownership rules.
 7. Export patches.
-8. Store outputs in `.agentx/runs/<run-id>`.
+8. Store outputs in `.paraflow/runs/<run-id>`.
 
 Run directory:
 
 ```text
-.agentx/runs/2026-06-29-001/
+.paraflow/runs/2026-06-29-001/
   task-plan.yml
   agents/
     auth/
@@ -1723,7 +1723,7 @@ Acceptance criteria:
 Commands:
 
 ```bash
-agentx compose --run <run-id>
+paraflow compose --run <run-id>
 ```
 
 Tasks:
@@ -1829,7 +1829,7 @@ Tasks:
 2. Open composed PR.
 3. Add report as PR body.
 4. Add labels:
-   - `agentx`;
+   - `paraflow`;
    - `multi-agent`;
    - `needs-review`;
    - `contract-change-request`.
@@ -2325,7 +2325,7 @@ Best first surface.
 Example:
 
 ```bash
-agentx run task-plan.yml
+paraflow run task-plan.yml
 ```
 
 ### 19.2 GitHub App
@@ -2335,7 +2335,7 @@ Useful once the workflow is proven.
 Features:
 
 - trigger from issue labels;
-- comment `/agentx run`;
+- comment `/paraflow run`;
 - open composed PR;
 - post report;
 - block merge if validation fails.
@@ -2573,11 +2573,11 @@ Mitigation:
 Build this first:
 
 ```bash
-agentx init
-agentx run task-plan.yml
-agentx compose
-agentx verify
-agentx report
+paraflow init
+paraflow run task-plan.yml
+paraflow compose
+paraflow verify
+paraflow report
 ```
 
 Support:
@@ -2619,9 +2619,9 @@ Deliverables:
 Demo:
 
 ```bash
-agentx run examples/two-agents.yml
-agentx compose
-agentx verify
+paraflow run examples/two-agents.yml
+paraflow compose
+paraflow verify
 ```
 
 ### Days 31–60
@@ -2690,11 +2690,11 @@ No agent edits the composed file.
 ## Quick start
 
 ```bash
-agentx init
-agentx run task-plan.yml
-agentx compose
-agentx verify
-agentx pr
+paraflow init
+paraflow run task-plan.yml
+paraflow compose
+paraflow verify
+paraflow pr
 ```
 ```
 

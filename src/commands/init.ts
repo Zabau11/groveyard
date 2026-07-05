@@ -6,18 +6,18 @@ type InitResult = {
   skipped: string[];
 };
 
-const agentxDir = ".agentx";
+const paraflowDir = ".paraflow";
 
 const files = {
   "config.yml": `version: 1
 
-# Commands run by agentx verify. Keep this empty until the project-specific
+# Commands run by paraflow verify. Keep this empty until the project-specific
 # checks are known.
 verify: []
 
 # Paths protected for every normal agent run.
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "contracts/**"
   - "src/generated/**"
   - "package.json"
@@ -63,7 +63,7 @@ adapters:
 domains: {}
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "contracts/**"
   - "src/generated/**"
   - "package.json"
@@ -74,7 +74,7 @@ protected:
   "schemas/manifest.schema.json": `${JSON.stringify(
     {
       $schema: "https://json-schema.org/draft/2020-12/schema",
-      title: "AgentX Agent Manifest",
+      title: "Paraflow Agent Manifest",
       type: "object",
       required: ["version", "agent", "summary"],
       additionalProperties: false,
@@ -193,11 +193,11 @@ protected:
 `,
 };
 
-export async function initAgentx(cwd: string): Promise<InitResult> {
+export async function initParaflow(cwd: string): Promise<InitResult> {
   const created: string[] = [];
   const skipped: string[] = [];
 
-  for (const directory of [agentxDir, join(agentxDir, "runs"), join(agentxDir, "reports"), join(agentxDir, "schemas"), join(agentxDir, "worktrees")]) {
+  for (const directory of [paraflowDir, join(paraflowDir, "runs"), join(paraflowDir, "reports"), join(paraflowDir, "schemas"), join(paraflowDir, "worktrees")]) {
     const fullPath = join(cwd, directory);
     if (await pathExists(fullPath)) {
       skipped.push(`${directory}/`);
@@ -208,13 +208,13 @@ export async function initAgentx(cwd: string): Promise<InitResult> {
   }
 
   for (const [relativePath, contents] of Object.entries(files)) {
-    const fullPath = join(cwd, agentxDir, relativePath);
+    const fullPath = join(cwd, paraflowDir, relativePath);
     try {
       await writeFile(fullPath, contents, { flag: "wx" });
-      created.push(join(agentxDir, relativePath));
+      created.push(join(paraflowDir, relativePath));
     } catch (error) {
       if (isAlreadyExistsError(error)) {
-        skipped.push(join(agentxDir, relativePath));
+        skipped.push(join(paraflowDir, relativePath));
         continue;
       }
 

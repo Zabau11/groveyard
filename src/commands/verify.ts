@@ -28,16 +28,16 @@ type VerificationSummary = {
 };
 
 export async function verifyRun(runId: string, cwd: string): Promise<VerificationSummary> {
-  const runRoot = join(cwd, ".agentx", "runs", runId);
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
   const taskPlanPath = join(runRoot, "task-plan.yml");
   const compositionPath = join(runRoot, "composition.json");
 
   if (!(await pathExists(taskPlanPath))) {
-    throw new Error(`Task plan not found: .agentx/runs/${runId}/task-plan.yml`);
+    throw new Error(`Task plan not found: .paraflow/runs/${runId}/task-plan.yml`);
   }
 
   if (!(await pathExists(compositionPath))) {
-    throw new Error(`Composition summary not found: .agentx/runs/${runId}/composition.json. Run agentx compose first.`);
+    throw new Error(`Composition summary not found: .paraflow/runs/${runId}/composition.json. Run paraflow compose first.`);
   }
 
   const plan = taskPlanSchema.parse(parseYaml(await readFile(taskPlanPath, "utf8")));

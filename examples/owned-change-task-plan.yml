@@ -6,7 +6,7 @@ verify:
   - "test -f src/features/auth/password-reset.ts"
 
 protected:
-  - ".agentx/**"
+  - ".paraflow/**"
   - "src/generated/**"
   - "package.json"
   - "package-lock.json"

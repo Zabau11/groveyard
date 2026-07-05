@@ -12,7 +12,7 @@ const adapterConfigSchema = z.object({
   detect: z.array(z.string()).optional(),
 });
 
-const agentxConfigSchema = z.object({
+const paraflowConfigSchema = z.object({
   version: z.literal(1),
   adapters: z.record(adapterConfigSchema).default({}),
 });
@@ -49,7 +49,7 @@ export type ResolvedAgentCommand = {
 };
 
 export async function listAdapters(cwd: string): Promise<AdapterListItem[]> {
-  const config = await loadAgentxConfig(cwd);
+  const config = await loadParaflowConfig(cwd);
 
   return Object.entries(config.adapters)
     .map(([name, adapter]) => ({
@@ -63,10 +63,10 @@ export async function listAdapters(cwd: string): Promise<AdapterListItem[]> {
 }
 
 export async function detectAutoAdapter(cwd: string): Promise<AdapterDetection> {
-  const config = await loadAgentxConfig(cwd);
+  const config = await loadParaflowConfig(cwd);
   const auto = config.adapters.auto;
   if (!auto) {
-    throw new Error('No "auto" adapter configured in .agentx/config.yml.');
+    throw new Error('No "auto" adapter configured in .paraflow/config.yml.');
   }
 
   const candidates = auto.detect ?? ["codex", "claude", "cursor"];
@@ -102,7 +102,7 @@ export async function resolveAgentCommandDetails(cwd: string, input: ResolveComm
     };
   }
 
-  const config = await loadAgentxConfig(cwd);
+  const config = await loadParaflowConfig(cwd);
   const adapter = config.adapters[input.agent.adapter];
   if (!adapter) {
     throw new Error(`Unknown adapter "${input.agent.adapter}" for agent "${input.agentName}".`);
@@ -142,7 +142,7 @@ async function detectAdapter(adapters: Record<string, AdapterConfig>, adapter: A
     }
   }
 
-  throw new Error(`Could not auto-detect an installed agent command for "${agentName}". Configure .agentx/config.yml, install Codex/Claude/Cursor CLI, or run with --adapter noop for a local smoke test.`);
+  throw new Error(`Could not auto-detect an installed agent command for "${agentName}". Configure .paraflow/config.yml, install Codex/Claude/Cursor CLI, or run with --adapter noop for a local smoke test.`);
 }
 
 function commandNameFromTemplate(template: string | undefined): string | undefined {
@@ -162,8 +162,8 @@ async function commandExists(command: string | undefined): Promise<boolean> {
   return result.exitCode === 0;
 }
 
-async function loadAgentxConfig(cwd: string): Promise<z.infer<typeof agentxConfigSchema>> {
-  const configPath = join(cwd, ".agentx", "config.yml");
+async function loadParaflowConfig(cwd: string): Promise<z.infer<typeof paraflowConfigSchema>> {
+  const configPath = join(cwd, ".paraflow", "config.yml");
   if (!(await pathExists(configPath))) {
     return {
       version: 1,
@@ -171,7 +171,7 @@ async function loadAgentxConfig(cwd: string): Promise<z.infer<typeof agentxConfi
     };
   }
 
-  return agentxConfigSchema.parse(parseYaml(await readFile(configPath, "utf8")));
+  return paraflowConfigSchema.parse(parseYaml(await readFile(configPath, "utf8")));
 }
 
 function renderTemplate(template: string, values: Record<string, string>): string {

@@ -12,7 +12,7 @@ import { bootstrapRepository } from "./commands/bootstrap.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
 import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
-import { initAgentx } from "./commands/init.js";
+import { initParaflow } from "./commands/init.js";
 import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
 import { parsePlannerMode, type PlannerMode } from "./commands/planner.js";
 import { generateReport } from "./commands/report.js";
@@ -26,7 +26,7 @@ import { verifyRun } from "./commands/verify.js";
 const program = new Command();
 
 program
-  .name("agentx")
+  .name("paraflow")
   .description("Coordinate multiple coding agents with isolated workspaces and ownership checks.")
   .version("0.1.0")
   .action(async () => {
@@ -35,11 +35,11 @@ program
 
 program
   .command("init")
-  .description("Initialize AgentX metadata in the current repository.")
+  .description("Initialize Paraflow metadata in the current repository.")
   .action(async () => {
-    const result = await initAgentx(process.cwd());
+    const result = await initParaflow(process.cwd());
 
-    console.log("Initialized AgentX metadata.");
+    console.log("Initialized Paraflow metadata.");
     if (result.created.length > 0) {
       console.log("\nCreated:");
       for (const path of result.created) {
@@ -57,7 +57,7 @@ program
 
 program
   .command("analyze")
-  .description("Analyze the current repository and write .agentx/analysis.json.")
+  .description("Analyze the current repository and write .paraflow/analysis.json.")
   .action(async () => {
     const analysis = await analyzeRepository(process.cwd());
 
@@ -72,12 +72,12 @@ program
       console.log(`- ${module.kind}: ${module.path}`);
     }
     console.log(`Shared files: ${analysis.sharedFiles.length}`);
-    console.log("Wrote: .agentx/analysis.json");
+    console.log("Wrote: .paraflow/analysis.json");
   });
 
 program
   .command("bootstrap")
-  .description("Create a minimal TypeScript app skeleton with AgentX-friendly ownership lanes.")
+  .description("Create a minimal TypeScript app skeleton with Paraflow-friendly ownership lanes.")
   .action(async () => {
     const result = await bootstrapRepository(process.cwd());
 
@@ -96,14 +96,14 @@ program
       console.log("Dependency install needed before verification: npm install");
     }
     if (result.created.length > 0) {
-      console.log("Next: install dependencies, commit the scaffold, then run agentx start.");
+      console.log("Next: install dependencies, commit the scaffold, then run paraflow start.");
     }
   });
 
 program
   .command("adapters")
   .option("--detect", "Show which adapter auto would select")
-  .description("List configured AgentX adapter presets.")
+  .description("List configured Paraflow adapter presets.")
   .action(async (options: { detect?: boolean }) => {
     const adapters = await listAdapters(process.cwd());
     if (adapters.length === 0) {
@@ -135,11 +135,11 @@ program
 program
   .command("doctor")
   .option("--strict", "Exit non-zero when warnings are present")
-  .description("Check whether the current repository is ready for AgentX.")
+  .description("Check whether the current repository is ready for Paraflow.")
   .action(async (options: { strict?: boolean }) => {
     const report = await runDoctor(process.cwd());
 
-    console.log(`AgentX doctor: ${report.status}`);
+    console.log(`Paraflow doctor: ${report.status}`);
     for (const section of report.sections) {
       console.log("");
       console.log(section.title);
@@ -159,7 +159,7 @@ program
 program
   .command("validate-plan")
   .argument("<plan>", "Path to a task-plan.yml file")
-  .description("Validate an AgentX task plan.")
+  .description("Validate a Paraflow task plan.")
   .action(async (plan: string) => {
     const result = await validatePlanFile(plan, process.cwd());
     const agentCount = Object.keys(result.plan.agents).length;
@@ -182,7 +182,7 @@ program
   .argument("<goal...>", "Goal to turn into a draft task plan")
   .option("--adapter <name>", "Adapter preset to use", "auto")
   .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
-  .option("--out <path>", "Output path", ".agentx/task-plan.yml")
+  .option("--out <path>", "Output path", ".paraflow/task-plan.yml")
   .description("Generate a conservative draft task plan from repository analysis.")
   .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode; out: string }) => {
     const goal = goalParts.join(" ");
@@ -202,12 +202,12 @@ program
   .argument("<goal...>", "Goal to preview without running agents")
   .option("--adapter <name>", "Adapter preset to use", "auto")
   .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
-  .description("Preview the AgentX orchestration plan without writing files or creating worktrees.")
+  .description("Preview the Paraflow orchestration plan without writing files or creating worktrees.")
   .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode }) => {
     const goal = goalParts.join(" ");
     const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner });
 
-    console.log("AgentX preview");
+    console.log("Paraflow preview");
     console.log("");
     console.log(`Goal: ${preview.goal}`);
     console.log(`Run ID: ${preview.plan.runId}`);
@@ -274,13 +274,13 @@ program
   .argument("<goal...>", "Goal to explain before running agents")
   .option("--adapter <name>", "Adapter preset to use", "auto")
   .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
-  .description("Explain what AgentX would do for a goal without writing files or running agents.")
+  .description("Explain what Paraflow would do for a goal without writing files or running agents.")
   .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode }) => {
     const goal = goalParts.join(" ");
     const preview = await previewDraftPlan(goal, process.cwd(), { adapter: options.adapter, planner: options.planner });
     const agents = Object.entries(preview.plan.agents);
 
-    console.log(`AgentX would run ${formatCount(agents.length, "agent")}.`);
+    console.log(`Paraflow would run ${formatCount(agents.length, "agent")}.`);
     console.log("");
 
     for (const [agentName, agent] of agents) {
@@ -312,7 +312,7 @@ program
 
     console.log("");
     console.log("Next");
-    console.log(`agentx run ${shellDisplayQuote(goal)}`);
+    console.log(`paraflow run ${shellDisplayQuote(goal)}`);
   });
 
 program
@@ -321,12 +321,12 @@ program
   .option("--adapter <name>", "Adapter preset to use", "auto")
   .option("--planner <mode>", "Planner to choose module lanes: auto, llm, or heuristic", parsePlannerMode, "auto")
   .option("--bootstrap", "Create a minimal TypeScript app skeleton before planning")
-  .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
+  .option("--out <path>", "Output path for the generated task plan", ".paraflow/task-plan.yml")
   .option("--no-compose", "Skip composition")
   .option("--no-verify", "Skip verification")
   .option("--no-report", "Skip report generation")
   .option("--verbose", "Show adapter commands, workspaces, and live agent output")
-  .description("Run the one-command AgentX flow from goal to report.")
+  .description("Run the one-command Paraflow flow from goal to report.")
   .action(async (goalParts: string[], options: { adapter: string; planner: PlannerMode; bootstrap?: boolean; out: string; compose: boolean; verify: boolean; report: boolean; verbose?: boolean }) => {
     const goal = goalParts.join(" ");
     let skipVerifyReason: string | undefined;
@@ -335,11 +335,11 @@ program
       console.log(`Bootstrap complete: created=${bootstrap.created.length}, skipped=${bootstrap.skipped.length}`);
       if (bootstrap.created.length > 0) {
         console.log("");
-        console.log("Bootstrap created new files. Commit the scaffold before running agents so AgentX worktrees can use it as the base.");
+        console.log("Bootstrap created new files. Commit the scaffold before running agents so Paraflow worktrees can use it as the base.");
         console.log("Next:");
         console.log("- npm install");
         console.log("- git add . && git commit -m \"bootstrap app\"");
-        console.log(`- agentx start "${goal}" --adapter ${options.adapter} --planner ${options.planner}`);
+        console.log(`- paraflow start "${goal}" --adapter ${options.adapter} --planner ${options.planner}`);
         return;
       }
       if (bootstrap.needsInstall) {
@@ -396,17 +396,17 @@ program
 
 program
   .command("run")
-  .argument("[input...]", "Goal to run. Omit to run .agentx/task-plan.yml.")
+  .argument("[input...]", "Goal to run. Omit to run .paraflow/task-plan.yml.")
   .option("--plan <path>", "Run a specific task plan instead of a goal")
   .option("--adapter <name>", "Adapter preset to use for goal mode", "auto")
   .option("--planner <mode>", "Planner to choose module lanes in goal mode: auto, llm, or heuristic", parsePlannerMode, "auto")
-  .option("--out <path>", "Output path for the generated task plan", ".agentx/task-plan.yml")
+  .option("--out <path>", "Output path for the generated task plan", ".paraflow/task-plan.yml")
   .option("--verbose", "Show adapter commands, workspaces, and live agent output")
   .option("--no-compose", "Skip composition in goal mode")
   .option("--no-verify", "Skip verification in goal mode")
   .option("--no-report", "Skip report generation in goal mode")
   .option("--no-finalize", "Skip commit/PR prompts in goal mode")
-  .description("Run AgentX from a goal, or run the current task plan when no goal is provided.")
+  .description("Run Paraflow from a goal, or run the current task plan when no goal is provided.")
   .action(async (inputParts: string[] | undefined, options: { plan?: string; adapter: string; planner: PlannerMode; out: string; verbose?: boolean; compose: boolean; verify: boolean; report: boolean; finalize: boolean }) => {
     if (options.plan) {
       await runExistingPlan(options.plan, Boolean(options.verbose));
@@ -414,7 +414,7 @@ program
     }
 
     if (!inputParts || inputParts.length === 0) {
-      await runExistingPlan(".agentx/task-plan.yml", Boolean(options.verbose));
+      await runExistingPlan(".paraflow/task-plan.yml", Boolean(options.verbose));
       return;
     }
 
@@ -448,7 +448,7 @@ program
 
     const runs = await listRunStatuses(process.cwd());
     if (runs.length === 0) {
-      console.log("No AgentX runs found.");
+      console.log("No Paraflow runs found.");
       return;
     }
 
@@ -552,7 +552,7 @@ program
   .command("apply")
   .option("--run <runId>", "Run ID to apply; omit to choose interactively")
   .option("--force", "Apply even if verification has not passed")
-  .description("Apply a composed AgentX run back to the current checkout.")
+  .description("Apply a composed Paraflow run back to the current checkout.")
   .action(async (options: { run?: string; force?: boolean }) => {
     const result = await applyRun(process.cwd(), { run: options.run, force: options.force });
 
@@ -747,7 +747,7 @@ async function looksLikePlanFile(value: string): Promise<boolean> {
 
 function commitMessage(goal: string): string {
   const compact = goal.replace(/\s+/g, " ").trim();
-  return `agentx: ${compact.slice(0, 72)}`;
+  return `paraflow: ${compact.slice(0, 72)}`;
 }
 
 function shellDisplayQuote(value: string): string {

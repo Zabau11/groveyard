@@ -112,11 +112,11 @@ function matchesAny(tokens: Set<string>, values: string[]): boolean {
 
 async function tryLlmSelectModules(goal: string, analysis: RepoAnalysis, cwd: string): Promise<LlmPlannerAttempt> {
   const env = await loadPlannerEnv(cwd);
-  if (env.AGENTX_PLANNER_PROVIDER !== "mistral" || !env.MISTRAL_API_KEY) {
+  if (env.PARAFLOW_PLANNER_PROVIDER !== "mistral" || !env.MISTRAL_API_KEY) {
     return {};
   }
 
-  const model = env.AGENTX_PLANNER_MODEL || "codestral-latest";
+  const model = env.PARAFLOW_PLANNER_MODEL || "codestral-latest";
   let response: Response;
   try {
     response = await fetch("https://api.mistral.ai/v1/chat/completions", {
@@ -132,7 +132,7 @@ async function tryLlmSelectModules(goal: string, analysis: RepoAnalysis, cwd: st
           {
             role: "system",
             content:
-              "You are AgentX's repository planner. Select the minimal safe module lanes for a coding task. Respond with only JSON: {\"selectedModules\":[\"path\"],\"confidence\":0.0,\"reason\":\"short reason\",\"needsConfirmation\":false}. Only choose paths from the provided modules.",
+              "You are Paraflow's repository planner. Select the minimal safe module lanes for a coding task. Respond with only JSON: {\"selectedModules\":[\"path\"],\"confidence\":0.0,\"reason\":\"short reason\",\"needsConfirmation\":false}. Only choose paths from the provided modules.",
           },
           {
             role: "user",
@@ -174,7 +174,7 @@ async function tryLlmSelectModules(goal: string, analysis: RepoAnalysis, cwd: st
 
   const selection = llmPlannerResponseSchema.safeParse(parsed);
   if (!selection.success) {
-    return { warning: "Mistral planner JSON did not match AgentX's expected shape" };
+    return { warning: "Mistral planner JSON did not match Paraflow's expected shape" };
   }
 
   const moduleMap = new Map(analysis.modules.map((module) => [module.path, module]));

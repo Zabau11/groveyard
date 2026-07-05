@@ -12,10 +12,10 @@ type CleanResult = {
 export async function cleanRun(runId: string, cwd: string): Promise<CleanResult> {
   await ensureGitRepository(cwd);
 
-  const runRoot = join(cwd, ".agentx", "runs", runId);
-  const worktreeRoot = join(cwd, ".agentx", "worktrees", runId);
-  const reportPath = join(cwd, ".agentx", "reports", `${runId}.md`);
-  const branch = `agentx/${runId}`;
+  const runRoot = join(cwd, ".paraflow", "runs", runId);
+  const worktreeRoot = join(cwd, ".paraflow", "worktrees", runId);
+  const reportPath = join(cwd, ".paraflow", "reports", `${runId}.md`);
+  const branch = `paraflow/${runId}`;
   const removedWorktrees = await removeRegisteredWorktrees(cwd, worktreeRoot);
   const removedPaths: string[] = [];
 
@@ -86,7 +86,7 @@ async function deleteBranchIfExists(cwd: string, branch: string): Promise<string
 async function ensureGitRepository(cwd: string): Promise<void> {
   const result = await execa("git", ["rev-parse", "--is-inside-work-tree"], { cwd, reject: false });
   if (result.exitCode !== 0 || result.stdout.trim() !== "true") {
-    throw new Error("agentx clean must be executed inside a Git repository.");
+    throw new Error("paraflow clean must be executed inside a Git repository.");
   }
 }
 
