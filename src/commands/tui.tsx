@@ -23,6 +23,7 @@ type ConsoleIntent =
   | { type: "runs" }
   | { type: "doctor" }
   | { type: "help" }
+  | { type: "unavailable"; action: string }
   | { type: "exit" };
 
 type Screen = "home" | "loading" | "plan" | "runs" | "doctor" | "help" | "running" | "done" | "action" | "diff" | "error";
@@ -181,6 +182,18 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
         return;
       case "help":
         setScreen("help");
+        return;
+      case "unavailable":
+        setActionTitle("Action Not Available");
+        setActionLines([
+          `${intent.action} is available after a run completes.`,
+          "",
+          "From the home screen:",
+          "- type a task to start a new run",
+          "- type runs to inspect previous runs",
+          "- type explain <task> to preview only",
+        ]);
+        setScreen("action");
         return;
       case "exit":
         exit();
@@ -759,6 +772,9 @@ function parseConsoleIntent(raw: string): ConsoleIntent {
   if (["doctor", "check", "health"].includes(lower)) {
     return { type: "doctor" };
   }
+  if (["a", "apply", "d", "diff", "r", "report", "c", "clean"].includes(lower)) {
+    return { type: "unavailable", action: lower };
+  }
 
   const explainMatch = value.match(/^(explain|preview|plan)\s+(.+)$/i);
   if (explainMatch?.[2]) {
@@ -774,6 +790,10 @@ function parseConsoleIntent(raw: string): ConsoleIntent {
   }
   if (["new", "run", "start"].includes(lower)) {
     return { type: "new" };
+  }
+
+  if (value.length < 3) {
+    return { type: "unavailable", action: value };
   }
 
   return { type: "new", goal: value };

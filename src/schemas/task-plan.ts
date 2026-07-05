@@ -12,12 +12,19 @@ export const agentPlanSchema = z.object({
   outputs: z.array(nonEmptyString).default([]),
 });
 
+export const diffPlanSchema = z.object({
+  baseRef: nonEmptyString.optional(),
+  patchOutput: nonEmptyString.default("agent-output/patch.diff"),
+  summaryOutput: nonEmptyString.default("agent-output/diff.json"),
+});
+
 export const taskPlanSchema = z.object({
   version: z.literal(1),
   runId: nonEmptyString.regex(/^[a-zA-Z0-9._-]+$/, "runId may only contain letters, numbers, dots, underscores, and dashes"),
   baseBranch: nonEmptyString.default("main"),
   verify: z.array(nonEmptyString).default([]),
   protected: z.array(nonEmptyString).default([]),
+  diff: diffPlanSchema.default({}),
   generators: z
     .object({
       routes: z
@@ -33,4 +40,5 @@ export const taskPlanSchema = z.object({
 });
 
 export type AgentPlan = z.infer<typeof agentPlanSchema>;
+export type DiffPlan = z.infer<typeof diffPlanSchema>;
 export type TaskPlan = z.infer<typeof taskPlanSchema>;
