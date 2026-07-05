@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { analyzeRepository, type ModuleCandidate, type RepoAnalysis } from "./analyze.js";
-import { selectModulesForGoal, type ModuleSelection, type PlannerMode } from "./planner.js";
+import { inferLaneTaskForModule, selectModulesForGoal, type ModuleSelection, type PlannerMode } from "./planner.js";
 import { validatePlanFile } from "./validate-plan.js";
 import { taskPlanSchema, type TaskPlan } from "../schemas/task-plan.js";
 import { globsMayOverlap } from "../validation/globs.js";
@@ -75,15 +75,16 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
   const selectedOwnGlobs = selectedModules.map((module) => `${module.path}/**`);
   const protectedPaths = unique([...analysis.protected, ...analysis.sharedFiles, ...profile.extraProtected]).filter((protectedPath) => !selectedOwnGlobs.some((ownedGlob) => globsMayOverlap(ownedGlob, protectedPath)));
   const agents = Object.fromEntries(
-    selectedModules.map((module) => {
+    await Promise.all(selectedModules.map(async (module) => {
       const agentName = sanitizeAgentName(module.name);
       const owns = inferOwnedGlobs(module, profile);
+      const laneTask = await inferLaneTaskForModule(goal, module, cwd);
       const forbidden = unique([...protectedPaths, ...selectedModules.filter((candidate) => candidate.path !== module.path).map((candidate) => `${candidate.path}/**`)]).filter(
         (forbiddenPath) => !owns.some((ownedGlob) => globsMayOverlap(ownedGlob, forbiddenPath)),
       );
       const agent = {
         adapter: "generic",
-        task: buildAgentTask(goal, module, profile),
+        task: buildAgentTask(goal, laneTask, module, profile),
         owns,
         mayRead: inferMayRead(module, profile),
         outputs: profile.preferredOutputs,
@@ -108,7 +109,7 @@ async function buildDraftPlan(goal: string, cwd: string, options: { adapter?: st
           adapter,
         },
       ];
-    }),
+    })),
   );
 
   const plan = taskPlanSchema.parse({
@@ -296,9 +297,11 @@ function inferMayRead(module: ModuleCandidate, profile: TaskProfile): string[] {
   return unique([...profile.mayRead, `${module.path}/**`]).filter((path) => !path.startsWith(`${module.path}/`) || path !== `${module.path}/**`);
 }
 
-function buildAgentTask(goal: string, module: ModuleCandidate, profile: TaskProfile): string {
+function buildAgentTask(goal: string, laneTask: string, module: ModuleCandidate, profile: TaskProfile): string {
   return [
-    goal,
+    `Lane-specific task: ${laneTask}`,
+    "",
+    `Original request: ${goal}`,
     "",
     `Task profile: ${profile.label}.`,
     `Lane: ${module.path}.`,

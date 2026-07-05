@@ -64,6 +64,29 @@ export async function selectModulesForGoal(goal: string, analysis: RepoAnalysis,
   return fallback;
 }
 
+export async function inferLaneTaskForModule(goal: string, module: ModuleCandidate, cwd: string): Promise<string> {
+  const clauses = splitGoalClauses(goal);
+  if (clauses.length <= 1) {
+    return cleanTaskText(goal);
+  }
+
+  const fileKeywordMap = await loadModuleFileKeywords(cwd, [module]);
+  const fileKeywords = fileKeywordMap.get(module.path) ?? new Set<string>();
+  const scoredClauses = clauses
+    .map((clause) => ({
+      clause,
+      score: scoreClauseForModule(clause, module, fileKeywords),
+    }))
+    .filter((clause) => clause.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  if (scoredClauses.length === 0) {
+    return `Work on the ${module.path} portion of: ${cleanTaskText(goal)}`;
+  }
+
+  return scoredClauses.map((clause) => cleanTaskText(clause.clause)).join("; ");
+}
+
 async function heuristicSelectModules(goal: string, modules: ModuleCandidate[], cwd: string): Promise<ModuleSelection> {
   if (modules.length <= 1) {
     return {
@@ -134,6 +157,33 @@ type ModuleScore = {
   score: number;
   terms: string[];
 };
+
+function scoreClauseForModule(clause: string, module: ModuleCandidate, fileKeywords: Set<string>): number {
+  const clauseTokens = expandTokens(tokenize(clause));
+  const nameKeywords = expandTokens(new Set([module.name, ...splitIdentifier(module.name), ...splitIdentifier(module.path.split("/").at(-1) ?? module.name)]));
+  const pathKeywords = expandTokens(new Set(module.path.split("/").flatMap((part) => splitIdentifier(part))));
+  let score = 0;
+
+  for (const keyword of nameKeywords) {
+    if (clauseTokens.has(keyword)) {
+      score += 5;
+    }
+  }
+
+  for (const keyword of pathKeywords) {
+    if (clauseTokens.has(keyword)) {
+      score += 3;
+    }
+  }
+
+  for (const keyword of fileKeywords) {
+    if (clauseTokens.has(keyword)) {
+      score += 2;
+    }
+  }
+
+  return score;
+}
 
 async function scoreModulesForGoal(goal: string, tokens: Set<string>, modules: ModuleCandidate[], cwd: string): Promise<ModuleScore[]> {
   const clauses = splitGoalClauses(goal).map((clause) => expandTokens(tokenize(clause)));
@@ -221,10 +271,25 @@ async function loadModuleFileKeywords(cwd: string, modules: ModuleCandidate[]): 
 }
 
 function splitGoalClauses(goal: string): string[] {
-  return goal
+  const clauses = goal
     .split(/\b(?:and|then|plus|also)\b|[,;]/i)
     .map((clause) => clause.trim())
     .filter(Boolean);
+
+  let lastAction = "";
+  return clauses.map((clause) => {
+    const firstToken = splitIdentifier(clause)[0] ?? "";
+    if (actionWords.has(firstToken)) {
+      lastAction = firstToken;
+      return clause;
+    }
+
+    return lastAction ? `${lastAction} ${clause}` : clause;
+  });
+}
+
+function cleanTaskText(value: string): string {
+  return value.replace(/\s+/g, " ").trim().replace(/[.。]+$/g, "");
 }
 
 function expandTokens(tokens: Set<string>): Set<string> {
@@ -291,6 +356,26 @@ const stopWords = new Set([
   "index",
   "component",
   "components",
+]);
+
+const actionWords = new Set([
+  "add",
+  "build",
+  "change",
+  "create",
+  "delete",
+  "export",
+  "fix",
+  "improve",
+  "make",
+  "modify",
+  "move",
+  "polish",
+  "refactor",
+  "remove",
+  "rename",
+  "replace",
+  "update",
 ]);
 
 async function tryLlmSelectModules(goal: string, analysis: RepoAnalysis, cwd: string): Promise<LlmPlannerAttempt> {
