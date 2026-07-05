@@ -1,7 +1,7 @@
 {
   "name": "paraflow-orchestrator",
   "version": "0.1.0",
-  "description": "A local-first CLI for coordinating multiple coding agents safely.",
+  "description": "Task contracts that keep AI coding agents inside their lane.",
   "type": "module",
   "bin": {
     "paraflow": "./dist/index.js"

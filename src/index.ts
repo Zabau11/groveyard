@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { stat } from "node:fs/promises";
+import { relative } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { Command } from "commander";
@@ -11,6 +12,7 @@ import { applyRun } from "./commands/apply.js";
 import { bootstrapRepository } from "./commands/bootstrap.js";
 import { cleanRun } from "./commands/clean.js";
 import { composeRun } from "./commands/compose.js";
+import { checkCurrentContract, createGuardContract, createSplitContract, type CreateCurrentContractResult, type CurrentCheckResult } from "./commands/contracts.js";
 import { runDoctor, type DoctorStatus } from "./commands/doctor.js";
 import { initParaflow } from "./commands/init.js";
 import { createDraftPlan, previewDraftPlan } from "./commands/plan.js";
@@ -27,10 +29,46 @@ const program = new Command();
 
 program
   .name("paraflow")
-  .description("Coordinate multiple coding agents with isolated workspaces and ownership checks.")
+  .description("Keep coding agents in their lane with task contracts and ownership checks.")
   .version("0.1.0")
   .action(async () => {
     await launchTui({ cwd: process.cwd() });
+  });
+
+program
+  .command("guard")
+  .argument("<goal...>", "Single-agent task to guard")
+  .option("--planner <mode>", "Planner to choose the safest scope: auto, llm, or heuristic", parsePlannerMode, "auto")
+  .description("Create one active task contract for the next coding agent.")
+  .action(async (goalParts: string[], options: { planner: PlannerMode }) => {
+    const goal = goalParts.join(" ");
+    const result = await createGuardContract(goal, process.cwd(), { planner: options.planner });
+    printCurrentContractCreated(result);
+  });
+
+program
+  .command("split")
+  .argument("<goal...>", "Task to split into safe agent lanes")
+  .option("--planner <mode>", "Planner to choose the safest scope: auto, llm, or heuristic", parsePlannerMode, "auto")
+  .description("Create active task contracts for one or more coding agents.")
+  .action(async (goalParts: string[], options: { planner: PlannerMode }) => {
+    const goal = goalParts.join(" ");
+    const result = await createSplitContract(goal, process.cwd(), { planner: options.planner });
+    printCurrentContractCreated(result);
+  });
+
+program
+  .command("check")
+  .option("--agent <name>", "Agent name to check")
+  .option("--workspace <path>", "Workspace path to check for a single agent")
+  .option("--workspace-root <path>", "Folder containing one workspace per agent, named by agent")
+  .description("Check the active Paraflow contract against agent changes.")
+  .action(async (options: { agent?: string; workspace?: string; workspaceRoot?: string }) => {
+    const result = await checkCurrentContract(process.cwd(), options);
+    printCurrentCheck(result);
+    if (result.status === "rejected") {
+      process.exitCode = 1;
+    }
   });
 
 program
@@ -563,6 +601,66 @@ program
     }
   });
 
+function printCurrentContractCreated(result: CreateCurrentContractResult): void {
+  console.log(`${capitalize(result.mode)} created: ${formatCount(result.agentCount, "agent task")}`);
+  if (result.replaced) {
+    console.log("Replaced previous active contract.");
+  }
+
+  console.log("");
+  console.log("Give these files to your coding agents:");
+  for (const file of result.files) {
+    console.log("");
+    console.log(file.agent);
+    console.log(`  task: ${displayPath(file.taskPath)}`);
+    console.log(`  contract: ${displayPath(file.contractPath)}`);
+  }
+
+  console.log("");
+  console.log("When the agent work is finished, run:");
+  if (result.agentCount === 1) {
+    console.log("  paraflow check");
+  } else {
+    console.log("  paraflow check --workspace-root <folder-with-agent-workspaces>");
+    console.log("  paraflow check --agent <name> --workspace <path>");
+  }
+
+  console.log("");
+  console.log(`Plan: ${displayPath(result.planPath)}`);
+}
+
+function printCurrentCheck(result: CurrentCheckResult): void {
+  console.log(`Check: ${result.status}`);
+  console.log("");
+
+  for (const agent of result.agents) {
+    console.log(`- ${agent.agent}: ${agent.status} (${formatCount(agent.changedFiles.length, "changed file")})`);
+  }
+
+  if (result.warnings.length > 0) {
+    console.log("");
+    console.log("Warnings:");
+    for (const warning of result.warnings) {
+      console.log(`- ${warning}`);
+    }
+  }
+
+  const agentsWithViolations = result.agents.filter((agent) => agent.violations.length > 0);
+  if (agentsWithViolations.length > 0) {
+    console.log("");
+    console.log("Issues:");
+    for (const agent of agentsWithViolations) {
+      console.log(`- ${agent.agent}`);
+      for (const violation of agent.violations) {
+        console.log(`  - ${violation}`);
+      }
+    }
+  }
+
+  console.log("");
+  console.log(`Report: ${displayPath(result.reportPath)}`);
+}
+
 async function printRunStatus(runId: string): Promise<void> {
   const detail = await getRunStatus(runId, process.cwd());
   console.log(`Run: ${detail.run.runId}`);
@@ -916,6 +1014,15 @@ function printAgentViolations(agents: Array<{ agent: string; violations: string[
 
 function formatCount(count: number, label: string): string {
   return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function displayPath(path: string): string {
+  const relativePath = relative(process.cwd(), path);
+  return relativePath.length > 0 && !relativePath.startsWith("..") ? relativePath : path;
+}
+
+function capitalize(value: string): string {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 program.parseAsync(process.argv).catch((error: unknown) => {
