@@ -1,5 +1,5 @@
 version: 1
-runId: commands-add-an-exported-helper-in-src-commands--20260702T220759
+runId: create-an-agentx-diff-feature-20260705T104606
 baseBranch: main
 verify:
   - npm run typecheck
@@ -20,10 +20,8 @@ generators: {}
 agents:
   commands:
     adapter: auto
-    task: >-
-      commands add an exported helper in src/commands/status.ts that formats a
-      run status summary line
-
+    task: |-
+      create an agentx diff feature
 
       Focus only on src/commands. Emit agent-output/manifest.json when complete.
     owns:
@@ -45,4 +43,64 @@ agents:
       - src/generators/routes.ts
       - src/index.ts
       - tsconfig.json
+      - src/schemas/**
+      - src/validation/**
+    outputs: []
+  schemas:
+    adapter: auto
+    task: |-
+      create an agentx diff feature
+
+      Focus only on src/schemas. Emit agent-output/manifest.json when complete.
+    owns:
+      - src/schemas/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - contracts/**
+      - src/core/**
+    forbidden:
+      - .agentx/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/generators/routes.ts
+      - src/index.ts
+      - tsconfig.json
+      - src/commands/**
+      - src/validation/**
+    outputs: []
+  validation:
+    adapter: auto
+    task: >-
+      create an agentx diff feature
+
+
+      Focus only on src/validation. Emit agent-output/manifest.json when
+      complete.
+    owns:
+      - src/validation/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - contracts/**
+      - src/core/**
+    forbidden:
+      - .agentx/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/generators/routes.ts
+      - src/index.ts
+      - tsconfig.json
+      - src/commands/**
+      - src/schemas/**
     outputs: []

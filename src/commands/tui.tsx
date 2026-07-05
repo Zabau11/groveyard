@@ -215,16 +215,37 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       return;
     }
 
+    const currentRun = runResult;
     setScreen("loading");
     setMessage("Applying composed changes");
     try {
-      const result = await applyRun(cwd, { run: runResult.runId });
+      const result = await applyRun(cwd, { run: currentRun.runId });
       setActionTitle("Applied Changes");
       setActionLines([`Run: ${result.runId}`, `Changed files: ${result.files.length}`, ...result.files.map((file) => `- ${file}`)]);
       setScreen("action");
       void loadHomeModel(cwd).then(setHome);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      if (isDirtyWorkingTreeError(message)) {
+        const dirtyFiles = await readDirtyFiles(cwd);
+        setActionTitle("Apply Blocked");
+        setActionLines([
+          "AgentX will not apply a run into a dirty checkout.",
+          "Save, stash, or discard the current changes first.",
+          "",
+          "Dirty files:",
+          ...(dirtyFiles.length > 0 ? dirtyFiles.map((file) => `- ${file}`) : ["- git reported uncommitted changes"]),
+          "",
+          "Useful commands:",
+          "git status --short",
+          "git stash push -u",
+          `agentx apply --run ${currentRun.runId}`,
+        ]);
+        setScreen("action");
+        return;
+      }
+
+      setMessage(message);
       setScreen("error");
     }
   }
@@ -822,6 +843,18 @@ async function readRunDiff(cwd: string, runId: string): Promise<string[]> {
   }
 
   return lines;
+}
+
+async function readDirtyFiles(cwd: string): Promise<string[]> {
+  const result = await execa("git", ["status", "--short"], { cwd, reject: false });
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isDirtyWorkingTreeError(message: string): boolean {
+  return message.toLowerCase().includes("dirty working tree");
 }
 
 function plannerLabel(preview: DraftPlanPreview): string {
