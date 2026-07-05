@@ -75,12 +75,39 @@ function heuristicSelectModules(goal: string, modules: ModuleCandidate[]): Modul
   }
 
   const tokens = tokenize(goal);
+  const semanticMatches = modules.filter((module) => moduleMatchesGoal(module, tokens));
+  if (semanticMatches.length > 0) {
+    return semanticMatches;
+  }
+
   const directMatches = modules.filter((module) => tokens.has(module.name.toLowerCase()) || tokens.has(module.path.toLowerCase()));
   if (directMatches.length > 0) {
     return directMatches;
   }
 
   return modules.slice(0, 3);
+}
+
+function moduleMatchesGoal(module: ModuleCandidate, tokens: Set<string>): boolean {
+  const path = module.path.toLowerCase();
+  if (path === "src/commands") {
+    return matchesAny(tokens, ["command", "commands", "cli", "run", "apply", "status", "doctor", "preview", "explain", "diff", "tui", "ui", "dashboard"]);
+  }
+  if (path === "src/schemas") {
+    return matchesAny(tokens, ["schema", "schemas", "manifest", "yaml", "plan", "config", "diff"]);
+  }
+  if (path === "src/validation") {
+    return matchesAny(tokens, ["validate", "validation", "ownership", "protected", "forbidden", "rule", "rules", "diff"]);
+  }
+  if (path === "src/generators") {
+    return matchesAny(tokens, ["generator", "generators", "generate", "routes", "route", "compose", "composition"]);
+  }
+
+  return false;
+}
+
+function matchesAny(tokens: Set<string>, values: string[]): boolean {
+  return values.some((value) => tokens.has(value));
 }
 
 async function tryLlmSelectModules(goal: string, analysis: RepoAnalysis, cwd: string): Promise<LlmPlannerAttempt> {

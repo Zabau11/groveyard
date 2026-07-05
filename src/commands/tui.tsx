@@ -44,6 +44,15 @@ type RunResult = {
   reportPath?: string;
 };
 
+type AgentColumnState = {
+  name: string;
+  status: "queued" | "running" | "accepted" | "rejected" | "failed";
+  focus: string;
+  activity: string;
+  changedFiles: number;
+  violations: number;
+};
+
 export async function launchTui(options: TuiOptions): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.log("AgentX Console needs an interactive terminal.");
@@ -66,6 +75,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
   const [runs, setRuns] = useState<RunStatusListItem[]>([]);
   const [doctor, setDoctor] = useState<DoctorReport | undefined>();
   const [runLog, setRunLog] = useState<string[]>([]);
+  const [agentColumns, setAgentColumns] = useState<AgentColumnState[]>([]);
   const [runResult, setRunResult] = useState<RunResult | undefined>();
   const [actionTitle, setActionTitle] = useState("");
   const [actionLines, setActionLines] = useState<string[]>([]);
@@ -184,14 +194,17 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
         setScreen("help");
         return;
       case "unavailable":
-        setActionTitle("Action Not Available");
+        setActionTitle("Need A Full Task");
         setActionLines([
-          `${intent.action} is available after a run completes.`,
+          `"${intent.action}" is not enough for AgentX to plan safely.`,
           "",
-          "From the home screen:",
-          "- type a task to start a new run",
-          "- type runs to inspect previous runs",
-          "- type explain <task> to preview only",
+          "Type a full task, for example:",
+          "add retry support for failed agents",
+          "",
+          "Navigation:",
+          "/runs",
+          "/doctor",
+          "/help",
         ]);
         setScreen("action");
         return;
@@ -317,6 +330,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
   async function runCurrentGoal(): Promise<void> {
     setScreen("running");
     setRunLog(["Creating task plan"]);
+    setAgentColumns([]);
     setRunResult(undefined);
     try {
       const plan = await createDraftPlan(goal, cwd, { adapter: "auto", planner: "auto" });
@@ -353,12 +367,27 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
         appendRunLog(`Running ${event.agentCount} agent${event.agentCount === 1 ? "" : "s"}`);
         return;
       case "agent_started":
+        upsertAgentColumn({
+          name: event.agent,
+          status: "running",
+          focus: event.owns.join(", "),
+          activity: "starting",
+          changedFiles: 0,
+          violations: 0,
+        });
         appendRunLog(`${event.agent} started: ${event.owns.join(", ")}`);
         return;
       case "agent_activity":
+        updateAgentColumn(event.agent, { activity: event.activity });
         appendRunLog(event.activity);
         return;
       case "agent_finished":
+        updateAgentColumn(event.agent, {
+          status: event.status,
+          activity: "finished",
+          changedFiles: event.changedFiles,
+          violations: event.violations,
+        });
         appendRunLog(`${event.agent} ${event.status}: ${event.changedFiles} changed, ${event.violations} violations`);
         return;
       case "run_finished":
@@ -366,6 +395,20 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       case "agent_output":
         return;
     }
+  }
+
+  function upsertAgentColumn(agent: AgentColumnState): void {
+    setAgentColumns((agents) => {
+      const existing = agents.findIndex((candidate) => candidate.name === agent.name);
+      if (existing === -1) {
+        return [...agents, agent];
+      }
+      return agents.map((candidate, index) => (index === existing ? { ...candidate, ...agent } : candidate));
+    });
+  }
+
+  function updateAgentColumn(name: string, patch: Partial<AgentColumnState>): void {
+    setAgentColumns((agents) => agents.map((agent) => (agent.name === name ? { ...agent, ...patch } : agent)));
   }
 
   function resetHome(): void {
@@ -383,7 +426,7 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       {screen === "runs" && <RunsScreen runs={runs} />}
       {screen === "doctor" && doctor && <DoctorScreen report={doctor} />}
       {screen === "help" && <HelpScreen />}
-      {screen === "running" && <RunningScreen goal={goal} lines={runLog} />}
+      {screen === "running" && <RunningScreen goal={goal} lines={runLog} agents={agentColumns} />}
       {screen === "done" && runResult && <DoneScreen result={runResult} />}
       {screen === "action" && <ActionResultScreen title={actionTitle} lines={actionLines} />}
       {screen === "diff" && <DiffScreen lines={diffLines} />}
@@ -411,16 +454,13 @@ function HomeScreen({ home, command }: { home: HomeModel; command: string }): Re
   return (
     <Box flexDirection="column">
       <Box gap={4}>
-        <Panel title="Command Center" width={54}>
-          <Text color="gray">Type a task directly. AgentX handles the workflow.</Text>
+        <Panel title="Start Here" width={54}>
+          <Text color="gray">Describe the change you want in one sentence.</Text>
           <Box height={1} />
-          <CommandExample label="RUN" value="add retry support for failed agents" />
-          <CommandExample label="EXPLAIN" value="explain add retry support for failed agents" />
+          <Text bold>Example</Text>
+          <Text>add retry support for failed agents</Text>
           <Box height={1} />
-          <ActionRow command="new" detail="guided task launch" />
-          <ActionRow command="runs" detail="recent orchestration history" />
-          <ActionRow command="doctor" detail="repository readiness" />
-          <ActionRow command="quit" detail="leave the console" />
+          <Text color="gray">AgentX will preview the plan first. Nothing runs until you confirm.</Text>
         </Panel>
         <Panel title="Workspace" width={34}>
           <StatusRow status={home.doctorStatus} detail="doctor" />
@@ -437,9 +477,14 @@ function HomeScreen({ home, command }: { home: HomeModel; command: string }): Re
         </Panel>
       </Box>
       <Box marginTop={1}>
-        <Text color="gray">Use </Text>
-        <Text color="cyan">help</Text>
-        <Text color="gray"> for examples, or type the change you want below.</Text>
+        <Text color="gray">Secondary actions: </Text>
+        <Text color="cyan">/runs</Text>
+        <Text color="gray"> · </Text>
+        <Text color="cyan">/doctor</Text>
+        <Text color="gray"> · </Text>
+        <Text color="cyan">/help</Text>
+        <Text color="gray"> · </Text>
+        <Text color="cyan">/quit</Text>
       </Box>
       <CommandBar value={command} />
     </Box>
@@ -546,28 +591,39 @@ function DoctorScreen({ report }: { report: DoctorReport }): React.ReactElement 
 function HelpScreen(): React.ReactElement {
   return (
     <Box flexDirection="column">
-      <Panel title="How to talk to AgentX">
-        <Text color="gray">Type a task directly to plan and run it.</Text>
-        <Text color="gray">Prefix with explain when you only want a preview.</Text>
+      <Panel title="How to use AgentX">
+        <Text color="gray">Type the task you want done. AgentX always previews before running.</Text>
+        <Text color="gray">Use slash commands only for navigation.</Text>
       </Panel>
       <Box marginTop={1} flexDirection="column">
-        <CommandExample label="RUN" value="add retry support for failed agents" />
-        <CommandExample label="EXPLAIN" value="explain add retry support for failed agents" />
-        <CommandExample label="ACTION" value="runs" />
-        <CommandExample label="ACTION" value="doctor" />
+        <CommandExample label="TASK" value="add retry support for failed agents" />
+        <CommandExample label="TASK" value="create an agentx diff command" />
+        <CommandExample label="NAV" value="/runs" />
+        <CommandExample label="NAV" value="/doctor" />
       </Box>
       <Footer hint="Enter back · q quit" />
     </Box>
   );
 }
 
-function RunningScreen({ goal, lines }: { goal: string; lines: string[] }): React.ReactElement {
+function RunningScreen({ goal, lines, agents }: { goal: string; lines: string[]; agents: AgentColumnState[] }): React.ReactElement {
   return (
     <Box flexDirection="column">
       <Panel title="Running">
         <Text color="gray">{goal}</Text>
       </Panel>
+      <Box marginTop={1} gap={2}>
+        {agents.length > 0 ? (
+          agents.slice(0, 4).map((agent) => <AgentColumn key={agent.name} agent={agent} />)
+        ) : (
+          <Panel title="Preparing" width={32}>
+            <Text color="cyan">● creating isolated worktrees</Text>
+            <Text color="gray">Agents will appear here as they start.</Text>
+          </Panel>
+        )}
+      </Box>
       <Box marginTop={1} flexDirection="column">
+        <Text bold color="blue">Activity</Text>
         {lines.map((line, index) => (
           <Text key={`${index}-${line}`}>
             <Text color="cyan">●</Text> {line}
@@ -575,6 +631,23 @@ function RunningScreen({ goal, lines }: { goal: string; lines: string[] }): Reac
         ))}
       </Box>
     </Box>
+  );
+}
+
+function AgentColumn({ agent }: { agent: AgentColumnState }): React.ReactElement {
+  return (
+    <Panel title={agent.name} width={28}>
+      <StatusRow status={agent.status} detail="agent" />
+      <Text color="gray">owns</Text>
+      <Text>{truncate(agent.focus, 24)}</Text>
+      <Box height={1} />
+      <Text color="gray">activity</Text>
+      <Text>{truncate(agent.activity, 24)}</Text>
+      <Box height={1} />
+      <Text color="gray">
+        changed {agent.changedFiles} · issues {agent.violations}
+      </Text>
+    </Panel>
   );
 }
 
@@ -604,7 +677,7 @@ function ActionResultScreen({ title, lines }: { title: string; lines: string[] }
   return (
     <Box flexDirection="column">
       <Panel title={title || "Action Complete"}>
-        {lines.length > 0 ? lines.map((line) => <Text key={line}>{line}</Text>) : <Text color="gray">Done.</Text>}
+        {lines.length > 0 ? lines.map((line, index) => <Text key={`${index}-${line}`}>{line}</Text>) : <Text color="gray">Done.</Text>}
       </Panel>
       <Footer hint="Enter home · q quit" />
     </Box>
@@ -734,11 +807,11 @@ function CommandBar({ value }: { value: string }): React.ReactElement {
         <Text inverse bold>
           {" AGENTX "}
         </Text>
-        <Text color="gray"> What should AgentX do?</Text>
+        <Text color="gray"> Describe the task</Text>
       </Box>
       <Box>
         <Text color="cyan">&gt; </Text>
-        <Text>{value}</Text>
+        {value ? <Text>{value}</Text> : <Text color="gray">e.g. add retry support for failed agents</Text>}
         <Text color="gray">█</Text>
       </Box>
     </Box>
@@ -760,39 +833,39 @@ function parseConsoleIntent(raw: string): ConsoleIntent {
     return { type: "help" };
   }
 
-  if (["q", "quit", "exit", "close"].includes(lower)) {
+  if (["/q", "/quit", "/exit", "q", "quit", "exit"].includes(lower)) {
     return { type: "exit" };
   }
-  if (["help", "?", "h"].includes(lower)) {
+  if (["/help", "/?", "/h", "?", "help"].includes(lower)) {
     return { type: "help" };
   }
-  if (["runs", "run list", "history", "status"].includes(lower)) {
+  if (["/runs", "/history", "/status", "runs"].includes(lower)) {
     return { type: "runs" };
   }
-  if (["doctor", "check", "health"].includes(lower)) {
+  if (["/doctor", "/check", "/health", "doctor"].includes(lower)) {
     return { type: "doctor" };
   }
   if (["a", "apply", "d", "diff", "r", "report", "c", "clean"].includes(lower)) {
     return { type: "unavailable", action: lower };
   }
 
-  const explainMatch = value.match(/^(explain|preview|plan)\s+(.+)$/i);
+  const explainMatch = value.match(/^\/(explain|preview|plan)\s+(.+)$/i);
   if (explainMatch?.[2]) {
     return { type: "explain", goal: explainMatch[2].trim() };
   }
-  if (["explain", "preview", "plan"].includes(lower)) {
+  if (["/explain", "/preview", "/plan"].includes(lower)) {
     return { type: "explain" };
   }
 
-  const newMatch = value.match(/^(new|run|start)\s+(.+)$/i);
+  const newMatch = value.match(/^\/(new|run|start)\s+(.+)$/i);
   if (newMatch?.[2]) {
     return { type: "new", goal: newMatch[2].trim() };
   }
-  if (["new", "run", "start"].includes(lower)) {
+  if (["/new", "/run", "/start"].includes(lower)) {
     return { type: "new" };
   }
 
-  if (value.length < 3) {
+  if (value.length < 8 || !value.includes(" ")) {
     return { type: "unavailable", action: value };
   }
 
