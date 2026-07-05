@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, render, useApp, useInput } from "ink";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { execa } from "execa";
+import { applyRun } from "./apply.js";
+import { cleanRun } from "./clean.js";
 import { composeRun } from "./compose.js";
 import { runDoctor, type DoctorReport } from "./doctor.js";
 import { createDraftPlan, previewDraftPlan, type DraftPlanPreview } from "./plan.js";
@@ -21,7 +25,7 @@ type ConsoleIntent =
   | { type: "help" }
   | { type: "exit" };
 
-type Screen = "home" | "loading" | "plan" | "runs" | "doctor" | "help" | "running" | "done" | "error";
+type Screen = "home" | "loading" | "plan" | "runs" | "doctor" | "help" | "running" | "done" | "action" | "diff" | "error";
 type FlowMode = "new" | "explain";
 
 type HomeModel = {
@@ -62,6 +66,9 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
   const [doctor, setDoctor] = useState<DoctorReport | undefined>();
   const [runLog, setRunLog] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<RunResult | undefined>();
+  const [actionTitle, setActionTitle] = useState("");
+  const [actionLines, setActionLines] = useState<string[]>([]);
+  const [diffLines, setDiffLines] = useState<string[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -112,7 +119,34 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       return;
     }
 
-    if (screen === "runs" || screen === "doctor" || screen === "help" || screen === "done" || screen === "error") {
+    if (screen === "done") {
+      if (input === "q") {
+        exit();
+        return;
+      }
+      if (input === "a") {
+        void applyCompletedRun();
+        return;
+      }
+      if (input === "d") {
+        void showCompletedDiff();
+        return;
+      }
+      if (input === "r") {
+        showCompletedReport();
+        return;
+      }
+      if (input === "c") {
+        void cleanCompletedRun();
+        return;
+      }
+      if (key.return || key.escape || input === "b") {
+        resetHome();
+      }
+      return;
+    }
+
+    if (screen === "runs" || screen === "doctor" || screen === "help" || screen === "action" || screen === "diff" || screen === "error") {
       if (input === "q") {
         exit();
         return;
@@ -170,6 +204,76 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       const draft = await previewDraftPlan(trimmedGoal, cwd, { adapter: "auto", planner: "auto" });
       setPreview(draft);
       setScreen("plan");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setScreen("error");
+    }
+  }
+
+  async function applyCompletedRun(): Promise<void> {
+    if (!runResult) {
+      return;
+    }
+
+    setScreen("loading");
+    setMessage("Applying composed changes");
+    try {
+      const result = await applyRun(cwd, { run: runResult.runId });
+      setActionTitle("Applied Changes");
+      setActionLines([`Run: ${result.runId}`, `Changed files: ${result.files.length}`, ...result.files.map((file) => `- ${file}`)]);
+      setScreen("action");
+      void loadHomeModel(cwd).then(setHome);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setScreen("error");
+    }
+  }
+
+  async function showCompletedDiff(): Promise<void> {
+    if (!runResult) {
+      return;
+    }
+
+    setScreen("loading");
+    setMessage("Preparing integration diff");
+    try {
+      setDiffLines(await readRunDiff(cwd, runResult.runId));
+      setScreen("diff");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setScreen("error");
+    }
+  }
+
+  function showCompletedReport(): void {
+    if (!runResult) {
+      return;
+    }
+
+    setActionTitle("Run Report");
+    setActionLines([`Run: ${runResult.runId}`, runResult.reportPath ? `Report: ${runResult.reportPath}` : "Report was not generated."]);
+    setScreen("action");
+  }
+
+  async function cleanCompletedRun(): Promise<void> {
+    if (!runResult) {
+      return;
+    }
+
+    setScreen("loading");
+    setMessage("Cleaning run artifacts");
+    try {
+      const result = await cleanRun(runResult.runId, cwd);
+      setActionTitle("Cleaned Run");
+      setActionLines([
+        `Run: ${result.runId}`,
+        `Removed worktrees: ${result.removedWorktrees.length}`,
+        `Removed paths: ${result.removedPaths.length}`,
+        ...(result.deletedBranch ? [`Deleted branch: ${result.deletedBranch}`] : []),
+      ]);
+      setRunResult(undefined);
+      setScreen("action");
+      void loadHomeModel(cwd).then(setHome);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       setScreen("error");
@@ -247,6 +351,8 @@ function AgentXApp({ cwd }: { cwd: string }): React.ReactElement {
       {screen === "help" && <HelpScreen />}
       {screen === "running" && <RunningScreen goal={goal} lines={runLog} />}
       {screen === "done" && runResult && <DoneScreen result={runResult} />}
+      {screen === "action" && <ActionResultScreen title={actionTitle} lines={actionLines} />}
+      {screen === "diff" && <DiffScreen lines={diffLines} />}
       {screen === "error" && <ErrorScreen message={message} />}
     </Box>
   );
@@ -448,19 +554,43 @@ function DoneScreen({ result }: { result: RunResult }): React.ReactElement {
         {result.reportPath && <Text color="gray">Report: {result.reportPath}</Text>}
       </Panel>
       <Box marginTop={1} flexDirection="column">
-        <Text bold color="blue">
-          Next
-        </Text>
-        <Text>
-          <Text color="cyan">agentx apply --run {result.runId}</Text> <Text color="gray">bring changes back</Text>
-        </Text>
-        <Text>
-          <Text color="cyan">agentx status --run {result.runId}</Text> <Text color="gray">inspect result</Text>
-        </Text>
+        <Text bold color="blue">What next?</Text>
+        <ActionKey command="a" label="apply" detail="bring composed changes into this checkout" />
+        <ActionKey command="d" label="diff" detail="inspect the integration patch" />
+        <ActionKey command="r" label="report" detail="show the generated report path" />
+        <ActionKey command="c" label="clean" detail="discard run worktrees and artifacts" />
+        <ActionKey command="enter" label="home" detail="leave the run as-is" />
       </Box>
+      <Footer hint="a apply · d diff · r report · c clean · Enter home · q quit" />
+    </Box>
+  );
+}
+
+function ActionResultScreen({ title, lines }: { title: string; lines: string[] }): React.ReactElement {
+  return (
+    <Box flexDirection="column">
+      <Panel title={title || "Action Complete"}>
+        {lines.length > 0 ? lines.map((line) => <Text key={line}>{line}</Text>) : <Text color="gray">Done.</Text>}
+      </Panel>
       <Footer hint="Enter home · q quit" />
     </Box>
   );
+}
+
+function DiffScreen({ lines }: { lines: string[] }): React.ReactElement {
+  return (
+    <Box flexDirection="column">
+      <Panel title="Integration Diff">
+        {lines.length > 0 ? lines.map((line, index) => <DiffLine key={`${index}-${line}`} line={line} />) : <Text color="gray">No diff available.</Text>}
+      </Panel>
+      <Footer hint="Enter home · q quit" />
+    </Box>
+  );
+}
+
+function DiffLine({ line }: { line: string }): React.ReactElement {
+  const color = line.startsWith("+") ? "green" : line.startsWith("-") ? "red" : line.startsWith("@@") ? "cyan" : line.startsWith("diff ") ? "blue" : undefined;
+  return <Text color={color}>{truncate(line, 110)}</Text>;
 }
 
 function ErrorScreen({ message }: { message: string }): React.ReactElement {
@@ -500,6 +630,20 @@ function ActionRow({ command, detail }: { command: string; detail: string }): Re
   return (
     <Text>
       <Text color="cyan">{command.padEnd(8)}</Text>
+      <Text color="gray">{detail}</Text>
+    </Text>
+  );
+}
+
+function ActionKey({ command, label, detail }: { command: string; label: string; detail: string }): React.ReactElement {
+  return (
+    <Text>
+      <Text inverse bold>
+        {" "}
+        {command}
+        {" "}
+      </Text>{" "}
+      <Text color="cyan">{label.padEnd(8)}</Text>
       <Text color="gray">{detail}</Text>
     </Text>
   );
@@ -651,6 +795,33 @@ async function detectPlannerLabel(cwd: string): Promise<string> {
   }
 
   return env.AGENTX_PLANNER_PROVIDER === "mistral" || env.MISTRAL_API_KEY ? "mistral" : "local";
+}
+
+async function readRunDiff(cwd: string, runId: string): Promise<string[]> {
+  const compositionPath = join(cwd, ".agentx", "runs", runId, "composition.json");
+  const composition = JSON.parse(await readFile(compositionPath, "utf8")) as { workspacePath?: string };
+  if (!composition.workspacePath) {
+    throw new Error(`Run "${runId}" does not have a composed workspace.`);
+  }
+
+  const [stat, diff] = await Promise.all([
+    execa("git", ["diff", "--stat", "HEAD"], { cwd: composition.workspacePath }),
+    execa("git", ["diff", "--", "."], { cwd: composition.workspacePath }),
+  ]);
+  const lines = [
+    `Run: ${runId}`,
+    "",
+    ...(stat.stdout.trim() ? stat.stdout.split("\n") : ["No changed files detected."]),
+    "",
+    ...diff.stdout.split("\n").slice(0, 80),
+  ].filter((line, index, all) => line.length > 0 || all[index - 1]?.length !== 0);
+
+  if (diff.stdout.split("\n").length > 80) {
+    lines.push("");
+    lines.push("Diff truncated. Use agentx status/apply or inspect the integration workspace for the full patch.");
+  }
+
+  return lines;
 }
 
 function plannerLabel(preview: DraftPlanPreview): string {
