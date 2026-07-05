@@ -236,29 +236,21 @@ function createSingleAgentPlan(plan: TaskPlan, agentName: string, goal: string):
 }
 
 function shouldCollapseSplit(goal: string, plan: TaskPlan): { collapse: boolean; agentName: string; reason: string } {
+  const tokens = tokenize(goal);
+  if (matchesAny(tokens, ["improve", "polish", "premium", "better", "cleanup", "clean", "refine"]) && !matchesAny(tokens, agentNameTokens(plan))) {
+    return {
+      collapse: true,
+      agentName: "discovery-agent",
+      reason: "Created one task instead of splitting because the request is broad and does not map cleanly to independent ownership lanes.",
+    };
+  }
+
   const agentCount = Object.keys(plan.agents).length;
   if (agentCount <= 1) {
     return {
       collapse: false,
       agentName: "agent",
       reason: "",
-    };
-  }
-
-  const tokens = tokenize(goal);
-  if (matchesAny(tokens, ["color", "colors", "copy", "text", "wording", "footer", "header", "navbar", "style", "styles", "css", "root", "page", "landing"])) {
-    return {
-      collapse: true,
-      agentName: "ui-agent",
-      reason: "Created one task instead of splitting because this looks like nearby UI, styling, or copy work.",
-    };
-  }
-
-  if (matchesAny(tokens, ["improve", "polish", "premium", "better", "cleanup", "clean", "refine"]) && !matchesAny(tokens, agentNameTokens(plan))) {
-    return {
-      collapse: true,
-      agentName: "discovery-agent",
-      reason: "Created one task instead of splitting because the request is broad and does not map cleanly to independent ownership lanes.",
     };
   }
 
