@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "description": "Task contracts that keep AI coding agents inside their lane.",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "bin": {
     "paraflow": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:worktree-mcp": "npm run build -w @paraflow/worktree-mcp",
     "dev": "tsx src/index.ts",
+    "dev:worktree-mcp": "npm run dev -w @paraflow/worktree-mcp",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
