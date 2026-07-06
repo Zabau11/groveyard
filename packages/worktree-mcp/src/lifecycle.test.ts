@@ -46,6 +46,14 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   const changed = await readFile(join(created.worktreePath, "changed.txt"), "utf8");
   assert.equal(changed, "changed\n");
 
+  const status = await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  assert.match(status.status, /\?\? changed\.txt/);
+
+  await writeFile(join(created.worktreePath, "README.md"), "# Updated\n", "utf8");
+  const diff = await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  assert.match(diff.diff, /diff --git a\/README\.md b\/README\.md/);
+  assert.match(diff.diff, /# Updated/);
+
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
   assert.equal(cleaned.status, "cleaned");
 });

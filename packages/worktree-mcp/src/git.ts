@@ -57,6 +57,14 @@ export async function removeGitWorktree(repoRoot: string, worktreePath: string):
   await runGit(repoRoot, ["worktree", "remove", "--force", worktreePath]);
 }
 
+export async function gitStatusShort(worktreePath: string): Promise<string> {
+  return runGit(worktreePath, ["status", "--short"]);
+}
+
+export async function gitDiff(worktreePath: string): Promise<string> {
+  return runGit(worktreePath, ["diff", "--binary", "HEAD"]);
+}
+
 function isExecError(error: unknown): error is Error & { stdout?: string; stderr?: string } {
   return error instanceof Error && ("stdout" in error || "stderr" in error);
 }

@@ -2,7 +2,15 @@ import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
-import { assertCleanWorktree, createGitWorktree, getCurrentBranch, removeGitWorktree, resolveRepoRoot } from "./git.js";
+import {
+  assertCleanWorktree,
+  createGitWorktree,
+  getCurrentBranch,
+  gitDiff,
+  gitStatusShort,
+  removeGitWorktree,
+  resolveRepoRoot,
+} from "./git.js";
 import { JsonSessionStore } from "./session-store.js";
 import type { SessionRecord } from "./sessions.js";
 
@@ -75,6 +83,22 @@ export class WorktreeSessionService {
       ...current,
       status: "cleaned",
     }));
+  }
+
+  async gitStatus(input: SessionLookupInput): Promise<{ session: SessionRecord; status: string }> {
+    const session = await this.getSession(input);
+    return {
+      session,
+      status: await gitStatusShort(session.worktreePath),
+    };
+  }
+
+  async gitDiff(input: SessionLookupInput): Promise<{ session: SessionRecord; diff: string }> {
+    const session = await this.getSession(input);
+    return {
+      session,
+      diff: await gitDiff(session.worktreePath),
+    };
   }
 
   private async resolveRepo(repoPath = process.cwd()): Promise<string> {

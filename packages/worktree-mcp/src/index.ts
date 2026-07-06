@@ -76,6 +76,26 @@ server.tool(
   async ({ repoPath, sessionId }) => jsonResponse(await sessionService.cleanupSession({ repoPath, sessionId })),
 );
 
+server.tool(
+  "git_status",
+  "Return git status --short for a registered worktree session.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+  },
+  async ({ repoPath, sessionId }) => jsonResponse(await sessionService.gitStatus({ repoPath, sessionId })),
+);
+
+server.tool(
+  "git_diff",
+  "Return the current patch for a registered worktree session. Use this before reporting completion.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+  },
+  async ({ repoPath, sessionId }) => jsonResponse(await sessionService.gitDiff({ repoPath, sessionId })),
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
