@@ -14,4 +14,12 @@ npm run build:worktree-mcp
 
 ## Current Status
 
-The package is scaffolded with a minimal MCP server entrypoint and a `server_info` tool. Session lifecycle, Git worktree management, path-safe file access, and command profiles are the next implementation steps.
+The package has a minimal MCP server entrypoint and the first worktree lifecycle tools:
+
+- `server_info`
+- `create_session`
+- `list_sessions`
+- `get_session`
+- `cleanup_session`
+
+Path-safe file access, Git inspection tools, and command profiles are the next implementation steps.
