@@ -14,6 +14,7 @@
     "build:worktree-mcp": "npm run build -w @paraflow/worktree-mcp",
     "dev": "tsx src/index.ts",
     "dev:worktree-mcp": "npm run dev -w @paraflow/worktree-mcp",
+    "test:worktree-mcp": "npm run test -w @paraflow/worktree-mcp",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
