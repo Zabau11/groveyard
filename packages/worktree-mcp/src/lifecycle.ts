@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 import {
@@ -13,6 +13,7 @@ import {
 } from "./git.js";
 import { JsonSessionStore } from "./session-store.js";
 import type { SessionRecord } from "./sessions.js";
+import { resolveExistingSessionPath, resolveWritableSessionPath, toSessionRelativePath } from "./path-safety.js";
 
 const metadataDirectory = ".worktree-mcp";
 const defaultWorktreesRoot = ".agent-worktrees";
@@ -27,6 +28,14 @@ export type CreateSessionInput = {
 export type SessionLookupInput = {
   repoPath?: string;
   sessionId: string;
+};
+
+export type SessionFileInput = SessionLookupInput & {
+  path: string;
+};
+
+export type SessionWriteFileInput = SessionFileInput & {
+  content: string;
 };
 
 export class WorktreeSessionService {
@@ -101,6 +110,42 @@ export class WorktreeSessionService {
     };
   }
 
+  async readFile(input: SessionFileInput): Promise<{ session: SessionRecord; path: string; content: string }> {
+    const session = await this.getSession(input);
+    const target = await resolveExistingSessionPath(session.worktreePath, input.path);
+
+    return {
+      session,
+      path: toSessionRelativePath(session.worktreePath, target),
+      content: await readFile(target, "utf8"),
+    };
+  }
+
+  async writeFile(input: SessionWriteFileInput): Promise<{ session: SessionRecord; path: string; bytesWritten: number }> {
+    const session = await this.getSession(input);
+    const target = await resolveWritableSessionPath(session.worktreePath, input.path);
+
+    await writeFile(target, input.content, "utf8");
+
+    return {
+      session,
+      path: toSessionRelativePath(session.worktreePath, target),
+      bytesWritten: Buffer.byteLength(input.content, "utf8"),
+    };
+  }
+
+  async listFiles(input: SessionFileInput): Promise<{ session: SessionRecord; path: string; files: string[] }> {
+    const session = await this.getSession(input);
+    const target = await resolveExistingSessionPath(session.worktreePath, input.path);
+    const files = await listRegularFiles(session.worktreePath, target);
+
+    return {
+      session,
+      path: toSessionRelativePath(session.worktreePath, target) || ".",
+      files,
+    };
+  }
+
   private async resolveRepo(repoPath = process.cwd()): Promise<string> {
     return resolveRepoRoot(resolve(repoPath));
   }
@@ -131,4 +176,44 @@ export function assertOwnedWorktreePath(repoRoot: string, worktreePath: string):
 
 function createSessionId(): string {
   return `sess_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
+}
+
+async function listRegularFiles(worktreePath: string, directoryPath: string, limit = 1000): Promise<string[]> {
+  const files: string[] = [];
+  await walk(directoryPath);
+  return files.sort();
+
+  async function walk(currentDirectory: string): Promise<void> {
+    if (files.length >= limit) {
+      return;
+    }
+
+    const entries = await readdir(currentDirectory, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (files.length >= limit) {
+        return;
+      }
+
+      if (entry.name === ".git") {
+        continue;
+      }
+
+      const entryPath = join(currentDirectory, entry.name);
+      const stats = await lstat(entryPath);
+
+      if (stats.isSymbolicLink()) {
+        continue;
+      }
+
+      if (stats.isDirectory()) {
+        await walk(entryPath);
+        continue;
+      }
+
+      if (stats.isFile()) {
+        files.push(toSessionRelativePath(worktreePath, entryPath));
+      }
+    }
+  }
 }

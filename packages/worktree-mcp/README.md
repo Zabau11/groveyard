@@ -23,5 +23,8 @@ The package has a minimal MCP server entrypoint and the first worktree lifecycle
 - `cleanup_session`
 - `git_status`
 - `git_diff`
+- `read_file`
+- `write_file`
+- `list_files`
 
-Path-safe file access and command profiles are the next implementation steps.
+Command profiles are the next implementation step.

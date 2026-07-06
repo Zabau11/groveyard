@@ -96,6 +96,40 @@ server.tool(
   async ({ repoPath, sessionId }) => jsonResponse(await sessionService.gitDiff({ repoPath, sessionId })),
 );
 
+server.tool(
+  "read_file",
+  "Read a UTF-8 text file inside a registered worktree session. The path must stay inside the session worktree.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+    path: z.string().min(1).describe("Relative path inside the session worktree."),
+  },
+  async ({ repoPath, sessionId, path }) => jsonResponse(await sessionService.readFile({ repoPath, sessionId, path })),
+);
+
+server.tool(
+  "write_file",
+  "Write a UTF-8 text file inside a registered worktree session. The path must stay inside the session worktree.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+    path: z.string().min(1).describe("Relative path inside the session worktree."),
+    content: z.string().describe("UTF-8 text content to write."),
+  },
+  async ({ repoPath, sessionId, path, content }) => jsonResponse(await sessionService.writeFile({ repoPath, sessionId, path, content })),
+);
+
+server.tool(
+  "list_files",
+  "List regular files under a relative directory inside a registered worktree session. Symlinks are skipped.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+    path: z.string().min(1).default(".").describe("Relative directory path inside the session worktree."),
+  },
+  async ({ repoPath, sessionId, path }) => jsonResponse(await sessionService.listFiles({ repoPath, sessionId, path })),
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
