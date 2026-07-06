@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "agent": "guard-agent",
+  "feature": "check-output",
+  "summary": "Made check behavior friendlier by falling back to a local smoke check for split contracts without workspace arguments.",
+  "exports": [],
+  "routes": [],
+  "navigation": [],
+  "permissions": [],
+  "contractChangeRequests": [],
+  "dependencyRequests": []
+}

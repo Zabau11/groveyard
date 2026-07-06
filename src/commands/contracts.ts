@@ -112,11 +112,18 @@ export async function checkCurrentContract(cwd: string, options: CheckOptions = 
   }
 
   const plan = taskPlanSchema.parse(parseYaml(await readFile(planPath, "utf8")));
-  const targets = resolveCheckTargets(plan, cwd, options);
+  const implicitCurrent = shouldUseImplicitCurrentCheck(plan, options);
+  const checkOptions = implicitCurrent ? { ...options, current: true } : options;
+  const targets = resolveCheckTargets(plan, cwd, checkOptions);
   const baseline = await readBaseline(currentPath);
   const warnings: string[] = [];
-  if (options.current && Object.keys(plan.agents).length > 1) {
-    warnings.push("Checking all split agents against the current checkout. Use separate workspaces for real split validation.");
+  if (checkOptions.current && Object.keys(plan.agents).length > 1) {
+    warnings.push(
+      implicitCurrent
+        ? "No split workspaces were provided, so Paraflow ran a local smoke check in this checkout."
+        : "Checking all split agents against the current checkout. Use separate workspaces for real split validation.",
+    );
+    warnings.push("Use separate workspaces for real split validation.");
     warnings.push("Manifest validation is skipped for missing manifests in --current mode.");
   }
   if (baseline.files.length > 0 && targets.some((target) => samePath(target.workspacePath, cwd))) {
@@ -125,7 +132,7 @@ export async function checkCurrentContract(cwd: string, options: CheckOptions = 
 
   const agents: CheckAgentSummary[] = [];
   for (const target of targets) {
-    agents.push(await checkAgent(plan, target.agentName, target.workspacePath, cwd, baseline, { allowMissingManifest: Boolean(options.current) }));
+    agents.push(await checkAgent(plan, target.agentName, target.workspacePath, cwd, baseline, { allowMissingManifest: Boolean(checkOptions.current) }));
   }
 
   applyDuplicateManifestRejections(agents);
@@ -160,7 +167,7 @@ async function writeCurrentContract(
   const baselineFiles = await getChangedFiles(cwd);
 
   await rm(currentPath, { recursive: true, force: true });
-  await mkdir(join(currentPath, "agents"), { recursive: true });
+  await mkdir(currentPath, { recursive: true });
 
   const planPath = join(currentPath, "plan.yml");
   await writeFile(planPath, stringifyYaml(plan));
@@ -178,14 +185,12 @@ async function writeCurrentContract(
 
   const files: ContractFile[] = [];
   const agentEntries = Object.entries(plan.agents);
-  for (const [agentName, agent] of agentEntries) {
-    const agentRoot = join(currentPath, "agents", agentName);
-    await mkdir(agentRoot, { recursive: true });
-
+  if (agentEntries.length === 1) {
+    const [agentName, agent] = agentEntries[0]!;
     const taskText = renderAgentTask(agentName, agent, plan);
     const contractText = stringifyYaml(renderAgentContract(mode, goal, plan, agentName, agent));
-    const taskPath = join(agentRoot, "task.md");
-    const contractPath = join(agentRoot, "contract.yml");
+    const taskPath = join(currentPath, "task.md");
+    const contractPath = join(currentPath, "contract.yml");
 
     await writeFile(taskPath, taskText);
     await writeFile(contractPath, contractText);
@@ -195,12 +200,27 @@ async function writeCurrentContract(
       taskPath,
       contractPath,
     });
-  }
+  } else {
+    await mkdir(join(currentPath, "agents"), { recursive: true });
 
-  if (agentEntries.length === 1) {
-    const [agentName, agent] = agentEntries[0]!;
-    await writeFile(join(currentPath, "task.md"), renderAgentTask(agentName, agent, plan));
-    await writeFile(join(currentPath, "contract.yml"), stringifyYaml(renderAgentContract(mode, goal, plan, agentName, agent)));
+    for (const [agentName, agent] of agentEntries) {
+      const agentRoot = join(currentPath, "agents", agentName);
+      await mkdir(agentRoot, { recursive: true });
+
+      const taskText = renderAgentTask(agentName, agent, plan);
+      const contractText = stringifyYaml(renderAgentContract(mode, goal, plan, agentName, agent));
+      const taskPath = join(agentRoot, "task.md");
+      const contractPath = join(agentRoot, "contract.yml");
+
+      await writeFile(taskPath, taskText);
+      await writeFile(contractPath, contractText);
+
+      files.push({
+        agent: agentName,
+        taskPath,
+        contractPath,
+      });
+    }
   }
 
   return {
@@ -341,8 +361,8 @@ function resolveCheckTargets(plan: TaskPlan, cwd: string, options: CheckOptions)
 
   throw new Error(
     [
-      `The current contract has ${agentNames.length} agents, so Paraflow needs to know where their workspaces are.`,
-      "Split tasks should be checked against one workspace per agent.",
+      style("Split check needs workspace paths.", "cyan"),
+      `The current contract has ${agentNames.length} agents. Use one workspace per agent for real validation.`,
       "",
       "Run one of:",
       `  ${command} check --workspace-root <folder-with-agent-workspaces>`,
@@ -354,6 +374,10 @@ function resolveCheckTargets(plan: TaskPlan, cwd: string, options: CheckOptions)
       `Agents: ${agentNames.join(", ")}`,
     ].join("\n"),
   );
+}
+
+function shouldUseImplicitCurrentCheck(plan: TaskPlan, options: CheckOptions): boolean {
+  return Object.keys(plan.agents).length > 1 && !options.current && !options.workspaceRoot && !options.workspace && !options.agent;
 }
 
 async function checkAgent(
@@ -612,6 +636,18 @@ function samePath(left: string, right: string): boolean {
 
 function escapeTable(value: string): string {
   return value.replaceAll("|", "\\|");
+}
+
+function style(value: string, color: "cyan"): string {
+  if (!process.stderr.isTTY) {
+    return value;
+  }
+
+  const colorCodes = {
+    cyan: 36,
+  };
+
+  return `\u001b[${colorCodes[color]}m${value}\u001b[0m`;
 }
 
 async function pathExists(path: string): Promise<boolean> {
