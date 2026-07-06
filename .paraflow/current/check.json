@@ -1,0 +1,37 @@
+{
+  "status": "accepted",
+  "currentPath": "/Users/david/Documents/orchestrator/.paraflow/current",
+  "reportPath": "/Users/david/Documents/orchestrator/.paraflow/current/report.md",
+  "summaryPath": "/Users/david/Documents/orchestrator/.paraflow/current/check.json",
+  "agents": [
+    {
+      "agent": "commands",
+      "status": "accepted",
+      "workspacePath": "/Users/david/Documents/orchestrator",
+      "changedFiles": [],
+      "violations": [],
+      "manifestValidation": {
+        "valid": true,
+        "errors": []
+      },
+      "manifestPath": "/Users/david/Documents/orchestrator/agent-output/manifest.json"
+    },
+    {
+      "agent": "validation",
+      "status": "accepted",
+      "workspacePath": "/Users/david/Documents/orchestrator",
+      "changedFiles": [],
+      "violations": [],
+      "manifestValidation": {
+        "valid": true,
+        "errors": []
+      },
+      "manifestPath": "/Users/david/Documents/orchestrator/agent-output/manifest.json"
+    }
+  ],
+  "warnings": [
+    "Checking all split agents against the current checkout. Use separate workspaces for real split validation.",
+    "Manifest validation is skipped for missing manifests in --current mode.",
+    "Ignored 3 files that were already changed before the current contract was created."
+  ]
+}

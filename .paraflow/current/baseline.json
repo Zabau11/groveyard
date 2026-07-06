@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "files": [
+    "src/commands/contracts.ts",
+    "src/index.ts",
+    "src/validation/ownership.ts"
+  ]
+}

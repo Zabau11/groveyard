@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "mode": "split",
+  "goal": "update validation rules and command output",
+  "createdAt": "2026-07-06T16:10:16.824Z",
+  "rationale": [
+    "Created one contract per safe ownership lane.",
+    "Generated a conservative draft plan for: update validation rules and command output",
+    "Using adapter: manual.",
+    "Task profile: CLI command.",
+    "Planner: heuristic.",
+    "Planner reason: Matched task language to known Paraflow implementation lanes: src/commands, src/validation.",
+    "Planner warning: LLM planner unavailable; used heuristic planner.",
+    "Selected 2 module lanes: src/commands, src/validation.",
+    "Protected detected shared files so normal agents cannot edit them directly.",
+    "Copied detected verification commands from repository analysis.",
+    "Command task: update command wiring and keep output concise and scriptable."
+  ]
+}

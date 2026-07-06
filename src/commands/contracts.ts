@@ -37,6 +37,8 @@ type CheckOptions = {
   agent?: string;
   workspace?: string;
   workspaceRoot?: string;
+  current?: boolean;
+  command?: string;
 };
 
 type CheckAgentStatus = "accepted" | "rejected";
@@ -113,13 +115,17 @@ export async function checkCurrentContract(cwd: string, options: CheckOptions = 
   const targets = resolveCheckTargets(plan, cwd, options);
   const baseline = await readBaseline(currentPath);
   const warnings: string[] = [];
+  if (options.current && Object.keys(plan.agents).length > 1) {
+    warnings.push("Checking all split agents against the current checkout. Use separate workspaces for real split validation.");
+    warnings.push("Manifest validation is skipped for missing manifests in --current mode.");
+  }
   if (baseline.files.length > 0 && targets.some((target) => samePath(target.workspacePath, cwd))) {
     warnings.push(`Ignored ${baseline.files.length} file${baseline.files.length === 1 ? "" : "s"} that were already changed before the current contract was created.`);
   }
 
   const agents: CheckAgentSummary[] = [];
   for (const target of targets) {
-    agents.push(await checkAgent(plan, target.agentName, target.workspacePath, cwd, baseline));
+    agents.push(await checkAgent(plan, target.agentName, target.workspacePath, cwd, baseline, { allowMissingManifest: Boolean(options.current) }));
   }
 
   applyDuplicateManifestRejections(agents);
@@ -286,6 +292,14 @@ function renderAgentContract(mode: ContractMode, goal: string, plan: TaskPlan, a
 
 function resolveCheckTargets(plan: TaskPlan, cwd: string, options: CheckOptions): Array<{ agentName: string; workspacePath: string }> {
   const agentNames = Object.keys(plan.agents);
+  const command = options.command ?? "paraflow";
+
+  if (options.current) {
+    return agentNames.map((agentName) => ({
+      agentName,
+      workspacePath: cwd,
+    }));
+  }
 
   if (options.workspaceRoot) {
     const workspaceRoot = resolve(cwd, options.workspaceRoot);
@@ -328,17 +342,28 @@ function resolveCheckTargets(plan: TaskPlan, cwd: string, options: CheckOptions)
   throw new Error(
     [
       `The current contract has ${agentNames.length} agents, so Paraflow needs to know where their workspaces are.`,
+      "Split tasks should be checked against one workspace per agent.",
       "",
       "Run one of:",
-      "  paraflow check --workspace-root <folder-with-agent-workspaces>",
-      "  paraflow check --agent <name> --workspace <path>",
+      `  ${command} check --workspace-root <folder-with-agent-workspaces>`,
+      ...agentNames.map((agentName) => `  ${command} check --agent ${agentName} --workspace <path-to-${agentName}-workspace>`),
+      "",
+      "For a local smoke test in this checkout:",
+      `  ${command} check --current`,
       "",
       `Agents: ${agentNames.join(", ")}`,
     ].join("\n"),
   );
 }
 
-async function checkAgent(plan: TaskPlan, agentName: string, workspacePath: string, cwd: string, baseline: Baseline): Promise<CheckAgentSummary> {
+async function checkAgent(
+  plan: TaskPlan,
+  agentName: string,
+  workspacePath: string,
+  cwd: string,
+  baseline: Baseline,
+  options: { allowMissingManifest: boolean },
+): Promise<CheckAgentSummary> {
   if (!(await pathExists(workspacePath))) {
     return {
       agent: agentName,
@@ -359,7 +384,7 @@ async function checkAgent(plan: TaskPlan, agentName: string, workspacePath: stri
   const ownership = validateChangedFiles(plan, agentName, changedFiles);
 
   const manifestPath = join(workspacePath, "agent-output", "manifest.json");
-  const manifestValidation = await validateManifest(manifestPath, agentName);
+  const manifestValidation = await validateManifest(manifestPath, agentName, { allowMissing: options.allowMissingManifest });
   const violations = [...ownership.violations, ...manifestValidation.errors];
 
   return {
@@ -377,8 +402,15 @@ async function checkAgent(plan: TaskPlan, agentName: string, workspacePath: stri
   };
 }
 
-async function validateManifest(manifestPath: string, agentName: string): Promise<ManifestValidation> {
+async function validateManifest(manifestPath: string, agentName: string, options: { allowMissing: boolean }): Promise<ManifestValidation> {
   if (!(await pathExists(manifestPath))) {
+    if (options.allowMissing) {
+      return {
+        valid: true,
+        errors: [],
+      };
+    }
+
     return {
       valid: false,
       errors: ["Missing required agent-output/manifest.json."],
@@ -445,6 +477,15 @@ function renderCheckReport(result: CurrentCheckResult): string {
     }
     lines.push("");
   }
+
+  lines.push("## Next Steps", "");
+  if (result.status === "accepted") {
+    lines.push("- Review the accepted changes and continue with your normal Git flow.");
+  } else {
+    lines.push("- Fix or rerun rejected agents with their task contract.");
+    lines.push("- Keep protected/shared-file needs in `agent-output/manifest.json` instead of editing those files directly.");
+  }
+  lines.push("");
 
   lines.push("## Changed Files", "");
   for (const agent of result.agents) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { stat } from "node:fs/promises";
-import { relative } from "node:path";
+import { basename, relative } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { Command } from "commander";
@@ -43,7 +43,7 @@ program
   .action(async (goalParts: string[], options: { planner: PlannerMode }) => {
     const goal = goalParts.join(" ");
     const result = await createGuardContract(goal, process.cwd(), { planner: options.planner });
-    printCurrentContractCreated(result);
+    printCurrentContractCreated(result, currentCliInvocation());
   });
 
 program
@@ -54,7 +54,7 @@ program
   .action(async (goalParts: string[], options: { planner: PlannerMode }) => {
     const goal = goalParts.join(" ");
     const result = await createSplitContract(goal, process.cwd(), { planner: options.planner });
-    printCurrentContractCreated(result);
+    printCurrentContractCreated(result, currentCliInvocation());
   });
 
 program
@@ -62,9 +62,10 @@ program
   .option("--agent <name>", "Agent name to check")
   .option("--workspace <path>", "Workspace path to check for a single agent")
   .option("--workspace-root <path>", "Folder containing one workspace per agent, named by agent")
+  .option("--current", "Check every active agent against the current checkout for a local smoke test")
   .description("Check the active Paraflow contract against agent changes.")
-  .action(async (options: { agent?: string; workspace?: string; workspaceRoot?: string }) => {
-    const result = await checkCurrentContract(process.cwd(), options);
+  .action(async (options: { agent?: string; workspace?: string; workspaceRoot?: string; current?: boolean }) => {
+    const result = await checkCurrentContract(process.cwd(), { ...options, command: currentCliInvocation() });
     printCurrentCheck(result);
     if (result.status === "rejected") {
       process.exitCode = 1;
@@ -601,7 +602,7 @@ program
     }
   });
 
-function printCurrentContractCreated(result: CreateCurrentContractResult): void {
+function printCurrentContractCreated(result: CreateCurrentContractResult, command: string): void {
   console.log(`${capitalize(result.mode)} created: ${formatCount(result.agentCount, "agent task")}`);
   if (result.replaced) {
     console.log("Replaced previous active contract.");
@@ -619,10 +620,11 @@ function printCurrentContractCreated(result: CreateCurrentContractResult): void 
   console.log("");
   console.log("When the agent work is finished, run:");
   if (result.agentCount === 1) {
-    console.log("  paraflow check");
+    console.log(`  ${command} check`);
   } else {
-    console.log("  paraflow check --workspace-root <folder-with-agent-workspaces>");
-    console.log("  paraflow check --agent <name> --workspace <path>");
+    console.log(`  ${command} check --workspace-root <folder-with-agent-workspaces>`);
+    console.log(`  ${command} check --agent <name> --workspace <path>`);
+    console.log(`  ${command} check --current  # local smoke test only`);
   }
 
   console.log("");
@@ -1019,6 +1021,15 @@ function formatCount(count: number, label: string): string {
 function displayPath(path: string): string {
   const relativePath = relative(process.cwd(), path);
   return relativePath.length > 0 && !relativePath.startsWith("..") ? relativePath : path;
+}
+
+function currentCliInvocation(): string {
+  const entrypoint = process.argv[1];
+  if (entrypoint?.endsWith("dist/index.js") || entrypoint?.endsWith("src/index.ts")) {
+    return `${basename(process.argv[0] ?? "node")} ${displayPath(entrypoint)}`;
+  }
+
+  return "paraflow";
 }
 
 function capitalize(value: string): string {

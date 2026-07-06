@@ -1,0 +1,125 @@
+version: 1
+runId: update-validation-rules-and-command-output-20260706T161016
+baseBranch: main
+verify:
+  - npm run typecheck
+  - npm run build
+protected:
+  - .paraflow/**
+  - contracts/**
+  - src/generated/**
+  - package.json
+  - package-lock.json
+  - pnpm-lock.yaml
+  - yarn.lock
+  - bun.lockb
+  - src/generators/routes.ts
+  - src/index.ts
+  - tsconfig.json
+diff:
+  patchOutput: agent-output/patch.diff
+  summaryOutput: agent-output/diff.json
+generators: {}
+agents:
+  commands:
+    adapter: manual
+    task: >-
+      Lane-specific task: update command output
+
+
+      Original request: update validation rules and command output
+
+
+      Task profile: CLI command.
+
+      Lane: src/commands.
+
+      Focus: Implement command behavior, option parsing, user-facing output, and
+      command wiring.
+
+
+      Rules:
+
+      - Edit only files owned by this lane unless the plan explicitly allows
+      more.
+
+      - Keep shared/protected files untouched.
+
+      - Preserve existing public CLI behavior unless this task explicitly
+      changes it.
+
+      - Emit agent-output/manifest.json when complete.
+    owns:
+      - src/commands/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - src/index.ts
+      - src/schemas/**
+      - src/validation/**
+    forbidden:
+      - .paraflow/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/generators/routes.ts
+      - src/index.ts
+      - tsconfig.json
+      - src/validation/**
+    outputs:
+      - agent-output/manifest.json
+  validation:
+    adapter: manual
+    task: >-
+      Lane-specific task: update validation rules
+
+
+      Original request: update validation rules and command output
+
+
+      Task profile: CLI command.
+
+      Lane: src/validation.
+
+      Focus: Implement command behavior, option parsing, user-facing output, and
+      command wiring.
+
+
+      Rules:
+
+      - Edit only files owned by this lane unless the plan explicitly allows
+      more.
+
+      - Keep shared/protected files untouched.
+
+      - Preserve existing public CLI behavior unless this task explicitly
+      changes it.
+
+      - Emit agent-output/manifest.json when complete.
+    owns:
+      - src/validation/**
+    mayRead:
+      - README.md
+      - IDEA.md
+      - src/commands/**
+      - src/index.ts
+      - src/schemas/**
+    forbidden:
+      - .paraflow/**
+      - contracts/**
+      - src/generated/**
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - bun.lockb
+      - src/generators/routes.ts
+      - src/index.ts
+      - tsconfig.json
+      - src/commands/**
+    outputs:
+      - agent-output/manifest.json

@@ -16,14 +16,14 @@ export function validateChangedFiles(plan: TaskPlan, agentName: string, changedF
   const forbidden = unique([...plan.protected, ...agent.forbidden]);
 
   for (const filePath of changedFiles) {
-    if (!matchesAny(filePath, agent.owns)) {
-      violations.push(`${filePath} is outside owned paths: ${agent.owns.join(", ")}`);
-      continue;
-    }
-
     const matchingForbidden = forbidden.find((glob) => matchesGlob(filePath, glob));
     if (matchingForbidden) {
       violations.push(`${filePath} matches forbidden path: ${matchingForbidden}`);
+      continue;
+    }
+
+    if (!matchesAny(filePath, agent.owns)) {
+      violations.push(`${filePath} is outside owned paths: ${agent.owns.join(", ")}`);
     }
   }
 
@@ -34,7 +34,7 @@ export function validateChangedFiles(plan: TaskPlan, agentName: string, changedF
 }
 
 export function renderAgentTask(agentName: string, agent: AgentPlan, plan: TaskPlan): string {
-  const forbidden = [...plan.protected, ...agent.forbidden];
+  const forbidden = unique([...plan.protected, ...agent.forbidden]);
   const manifestExample = JSON.stringify(
     {
       version: 1,
