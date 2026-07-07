@@ -192,7 +192,7 @@ export class WorktreeSessionService {
     };
   }
 
-  private async resolveRepo(repoPath = process.cwd()): Promise<string> {
+  private async resolveRepo(repoPath = process.env.GROVEYARD_REPO ?? process.cwd()): Promise<string> {
     return resolveRepoRoot(resolve(repoPath));
   }
 

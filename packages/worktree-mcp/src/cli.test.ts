@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -45,6 +45,55 @@ test("CLI doctor prints a readable non-JSON report", async () => {
   assert.match(stdout, /Ready for agent worktrees/);
   assert.match(stdout, /Command profiles: none/);
   assert.match(stdout, /groveyard init/);
+});
+
+test("CLI connect prints MCP config snippets", async () => {
+  const repo = await createRepo();
+  const { stdout } = await runCli(["connect", "--repo", repo]);
+
+  assert.match(stdout, /Connect/);
+  assert.match(stdout, /\[mcp_servers\.groveyard\]/);
+  assert.match(stdout, /"mcpServers"/);
+  assert.match(stdout, /"@groveyard\/mcp"/);
+  assert.match(stdout, new RegExp(escapeRegExp(repo)));
+});
+
+test("CLI connect reports snippets as JSON", async () => {
+  const repo = await createRepo();
+  const { stdout } = await runCli(["connect", "--repo", repo, "--json"]);
+  const report = JSON.parse(stdout) as { status: string; repoRoot: string; codexToml: string; mcpJson: string; targets: Array<{ name: string }> };
+
+  assert.equal(report.status, "ok");
+  assert.equal(report.repoRoot, repo);
+  assert.ok(report.targets.some((target) => target.name === "Codex"));
+  assert.match(report.codexToml, /\[mcp_servers\.groveyard\]/);
+  assert.match(report.mcpJson, /"GROVEYARD_REPO"/);
+});
+
+test("CLI connect can write detected config files", async () => {
+  const repo = await createRepo();
+  const home = await mkdtemp(join(tmpdir(), "groveyard-home-"));
+  await mkdir(join(home, ".codex"), { recursive: true });
+  await mkdir(join(home, ".cursor"), { recursive: true });
+  await writeFile(join(home, ".codex", "config.toml"), "# existing config\n", "utf8");
+
+  const { stdout } = await runCli(["connect", "--repo", repo, "--yes"], {
+    env: {
+      HOME: home,
+    },
+  });
+
+  const codexConfig = await readFile(join(home, ".codex", "config.toml"), "utf8");
+  const cursorConfig = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8")) as {
+    mcpServers: { groveyard: { command: string; args: string[]; env: { GROVEYARD_REPO: string } } };
+  };
+
+  assert.match(stdout, /Connected/);
+  assert.match(codexConfig, /\[mcp_servers\.groveyard\]/);
+  assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
+  assert.equal(cursorConfig.mcpServers.groveyard.command, "npx");
+  assert.deepEqual(cursorConfig.mcpServers.groveyard.args, ["-y", "@groveyard/mcp"]);
+  assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_REPO, repo);
 });
 
 test("CLI sessions, inspect, and clean operate on persisted sessions", async () => {
@@ -165,10 +214,14 @@ async function git(cwd: string, args: string[]): Promise<string> {
 
 async function runCli(
   args: string[],
-  options: { reject?: boolean } = {},
+  options: { reject?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   try {
     const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], {
+      env: {
+        ...process.env,
+        ...options.env,
+      },
       maxBuffer: 1024 * 1024 * 20,
     });
 
@@ -192,4 +245,8 @@ async function runCli(
 
 function isExecError(error: unknown): error is Error & { code?: number | string; stdout?: string; stderr?: string } {
   return error instanceof Error && ("stdout" in error || "stderr" in error || "code" in error);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

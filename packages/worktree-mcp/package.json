@@ -1,11 +1,11 @@
 {
   "name": "@groveyard/mcp",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "Safe Git worktree sessions for coding agents.",
   "type": "module",
   "bin": {
-    "groveyard": "./dist/index.js",
-    "worktree-mcp": "./dist/index.js"
+    "groveyard": "dist/index.js",
+    "worktree-mcp": "dist/index.js"
   },
   "files": [
     "dist/**/*.js",

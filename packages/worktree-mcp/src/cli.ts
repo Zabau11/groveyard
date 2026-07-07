@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 
 import { loadConfig } from "./config.js";
 import { resolveRepoRoot } from "./git.js";
@@ -13,6 +15,20 @@ type ParsedArgs = {
   positional: string[];
   json: boolean;
   force: boolean;
+  yes: boolean;
+};
+
+type AgentConfigTarget = {
+  id: "codex" | "claude-desktop" | "cursor";
+  name: string;
+  path: string;
+  format: "toml" | "json";
+  detected: boolean;
+  exists: boolean;
+};
+
+type ConnectWriteResult = AgentConfigTarget & {
+  action: "created" | "updated" | "skipped";
 };
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -33,6 +49,9 @@ export async function runCli(argv: string[]): Promise<void> {
         return;
       case "doctor":
         await doctor(args);
+        return;
+      case "connect":
+        await connect(args);
         return;
       case "init":
         await init(args);
@@ -64,6 +83,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let repoPath: string | undefined;
   let json = false;
   let force = false;
+  let yes = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -89,6 +109,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === "--yes" || value === "-y") {
+      yes = true;
+      continue;
+    }
+
     if (value) {
       positional.push(value);
     }
@@ -100,6 +125,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     positional,
     json,
     force,
+    yes,
   };
 }
 
@@ -181,6 +207,68 @@ async function doctor(args: ParsedArgs): Promise<void> {
   console.log("");
   console.log(style("Next", "bold"));
   console.log(`  ${Object.keys(config.commands).length ? style("groveyard sessions", "green") : style("groveyard init", "green")}`);
+}
+
+async function connect(args: ParsedArgs): Promise<void> {
+  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  const snippets = createConnectSnippets(repoRoot);
+  const targets = detectAgentConfigTargets();
+  const detectedTargets = targets.filter((target) => target.detected);
+
+  if (args.json) {
+    printJson({
+      status: "ok",
+      repoRoot,
+      targets,
+      ...snippets,
+    });
+    return;
+  }
+
+  printLogo();
+  console.log(style("Connect", "bold"));
+  console.log(style("Detected coding agent config files and can add Groveyard for this repo.", "dim"));
+  console.log("");
+  console.log(`${style("Repo", "cyan")}: ${repoRoot}`);
+  console.log("");
+
+  if (detectedTargets.length > 0) {
+    console.log(style("Detected", "bold"));
+
+    for (const target of detectedTargets) {
+      console.log(`  ${style(target.name, "cyan")} ${target.exists ? style("update", "yellow") : style("create", "green")}`);
+      console.log(`    ${target.path}`);
+    }
+  } else {
+    console.log(style("No known agent config folders found yet.", "yellow"));
+    console.log("Groveyard looked for Codex, Claude Desktop, and Cursor config locations.");
+  }
+
+  console.log("");
+
+  const writeResults = await maybeWriteDetectedConfigs(detectedTargets, repoRoot, args.yes);
+
+  if (writeResults.length > 0) {
+    console.log(style("Connected", "bold"));
+
+    for (const result of writeResults) {
+      console.log(`  ${style(result.action, result.action === "skipped" ? "dim" : "green")} ${result.name}`);
+    }
+
+    console.log("");
+    console.log(style("Restart your coding agent so it reloads MCP config.", "dim"));
+  } else {
+    console.log(style("Manual config", "bold"));
+    console.log(style("Codex ~/.codex/config.toml", "dim"));
+    console.log(snippets.codexToml);
+    console.log("");
+    console.log(style("Claude Desktop / Cursor mcpServers JSON", "dim"));
+    console.log(snippets.mcpJson);
+  }
+
+  console.log("");
+  console.log(style("Next", "bold"));
+  console.log(`  ${style("groveyard doctor", "green")}`);
 }
 
 async function sessions(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
@@ -285,6 +373,7 @@ Usage:
   groveyard                         Start the stdio MCP server
   groveyard init [--repo PATH]      Create .groveyard.yml
   groveyard doctor [--repo PATH]    Check repo/config readiness
+  groveyard connect [--repo PATH]   Detect agent configs and connect MCP
   groveyard sessions [--repo PATH]  List registered sessions
   groveyard inspect <sessionId>     Show session metadata and status
   groveyard commit <sessionId> -m "message"
@@ -294,6 +383,7 @@ Options:
   --repo PATH   Path inside the Git repository
   --json        Print JSON output for CLI commands
   --force       Overwrite files for commands that support it
+  --yes, -y     Confirm prompts for commands that support it
 `);
 }
 
@@ -339,6 +429,149 @@ async function withSpinner<T>(label: string, task: () => Promise<T>, silent: boo
 function formatCommandProfiles(commands: Record<string, string>): string {
   const names = Object.keys(commands);
   return names.length ? names.map((name) => style(name, "green")).join(", ") : style("none", "dim");
+}
+
+function createConnectSnippets(repoRoot: string): { codexToml: string; mcpJson: string } {
+  const args = ["-y", "@groveyard/mcp"];
+  const jsonConfig = {
+    mcpServers: {
+      groveyard: {
+        command: "npx",
+        args,
+        env: {
+          GROVEYARD_REPO: repoRoot,
+        },
+      },
+    },
+  };
+
+  return {
+    codexToml: [
+      "[mcp_servers.groveyard]",
+      'command = "npx"',
+      'args = ["-y", "@groveyard/mcp"]',
+      "",
+      "[mcp_servers.groveyard.env]",
+      `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
+    ].join("\n"),
+    mcpJson: JSON.stringify(jsonConfig, null, 2),
+  };
+}
+
+function detectAgentConfigTargets(): AgentConfigTarget[] {
+  const home = homedir();
+  const candidates: Array<Omit<AgentConfigTarget, "detected" | "exists">> = [
+    {
+      id: "codex",
+      name: "Codex",
+      path: join(home, ".codex", "config.toml"),
+      format: "toml",
+    },
+    {
+      id: "claude-desktop",
+      name: "Claude Desktop",
+      path: join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+      format: "json",
+    },
+    {
+      id: "cursor",
+      name: "Cursor",
+      path: join(home, ".cursor", "mcp.json"),
+      format: "json",
+    },
+  ];
+
+  return candidates.map((candidate) => {
+    const exists = existsSync(candidate.path);
+    return {
+      ...candidate,
+      exists,
+      detected: exists || existsSync(dirname(candidate.path)),
+    };
+  });
+}
+
+async function maybeWriteDetectedConfigs(targets: AgentConfigTarget[], repoRoot: string, assumeYes: boolean): Promise<ConnectWriteResult[]> {
+  if (targets.length === 0) {
+    return [];
+  }
+
+  if (!assumeYes && !isInteractive()) {
+    return [];
+  }
+
+  const results: ConnectWriteResult[] = [];
+  const rl = assumeYes ? undefined : createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    for (const target of targets) {
+      const shouldWrite = assumeYes || (rl ? await confirm(rl, `${target.exists ? "Update" : "Create"} ${target.name} config?`) : false);
+
+      if (!shouldWrite) {
+        results.push({ ...target, action: "skipped" });
+        continue;
+      }
+
+      await writeAgentConfig(target, repoRoot);
+      results.push({ ...target, action: target.exists ? "updated" : "created" });
+    }
+  } finally {
+    rl?.close();
+  }
+
+  return results;
+}
+
+async function confirm(rl: ReturnType<typeof createInterface>, question: string): Promise<boolean> {
+  const answer = await rl.question(`${question} ${style("[y/N]", "dim")} `);
+  return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
+}
+
+async function writeAgentConfig(target: AgentConfigTarget, repoRoot: string): Promise<void> {
+  await mkdir(dirname(target.path), { recursive: true });
+
+  if (target.format === "toml") {
+    await writeFile(target.path, upsertCodexToml(target.exists ? await readFile(target.path, "utf8") : "", repoRoot), "utf8");
+    return;
+  }
+
+  await writeFile(target.path, upsertMcpJson(target.exists ? await readFile(target.path, "utf8") : "", repoRoot), "utf8");
+}
+
+function upsertCodexToml(existing: string, repoRoot: string): string {
+  const block = [
+    "[mcp_servers.groveyard]",
+    'command = "npx"',
+    'args = ["-y", "@groveyard/mcp"]',
+    "",
+    "[mcp_servers.groveyard.env]",
+    `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
+  ].join("\n");
+
+  const pattern = /\n?\[mcp_servers\.groveyard\][\s\S]*?(?=\n\[mcp_servers\.|\n\[[^\]]+\]|\s*$)/;
+  const trimmed = existing.trimEnd();
+
+  if (pattern.test(trimmed)) {
+    return `${trimmed.replace(pattern, `\n${block}`)}\n`;
+  }
+
+  return `${trimmed ? `${trimmed}\n\n` : ""}${block}\n`;
+}
+
+function upsertMcpJson(existing: string, repoRoot: string): string {
+  const config = existing.trim() ? (JSON.parse(existing) as { mcpServers?: Record<string, unknown> }) : {};
+  config.mcpServers = {
+    ...config.mcpServers,
+    groveyard: {
+      command: "npx",
+      args: ["-y", "@groveyard/mcp"],
+      env: {
+        GROVEYARD_REPO: repoRoot,
+      },
+    },
+  };
+
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 function isInteractive(): boolean {

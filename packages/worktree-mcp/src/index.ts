@@ -3,7 +3,7 @@
 import { runCli } from "./cli.js";
 import { startMcpServer } from "./mcp-server.js";
 
-const cliCommands = new Set(["help", "--help", "-h", "init", "doctor", "sessions", "inspect", "commit", "clean"]);
+const cliCommands = new Set(["help", "--help", "-h", "init", "doctor", "connect", "sessions", "inspect", "commit", "clean"]);
 const command = process.argv[2];
 
 if (command && cliCommands.has(command)) {

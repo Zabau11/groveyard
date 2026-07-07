@@ -12,7 +12,7 @@ export async function startMcpServer(): Promise<void> {
     version: "0.1.0",
   });
 
-  const repoPathDescription = "Path inside the Git repository to manage. Defaults to the MCP server working directory.";
+  const repoPathDescription = "Path inside the Git repository to manage. Defaults to GROVEYARD_REPO, then the MCP server working directory.";
   const sessionIdDescription = "Session ID returned by create_session. All operations are scoped to this registered worktree session.";
 
   server.tool(

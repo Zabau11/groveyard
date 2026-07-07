@@ -28,6 +28,7 @@ Running `groveyard` without a subcommand starts the stdio MCP server. Human debu
 ```bash
 groveyard init
 groveyard doctor
+groveyard connect
 groveyard sessions
 groveyard inspect <sessionId>
 groveyard commit <sessionId> -m "message"
@@ -35,6 +36,7 @@ groveyard clean <sessionId>
 ```
 
 Each command accepts `--repo <path>` and `--json`.
+Use `groveyard connect` to detect Codex, Claude Desktop, and Cursor config files, then confirm whether Groveyard should create or update them. In non-interactive terminals it prints ready-to-paste snippets instead. Use `groveyard connect --yes` to write detected configs without prompts.
 
 ## Configuration
 
