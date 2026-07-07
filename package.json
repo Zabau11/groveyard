@@ -4,7 +4,8 @@
   "description": "Task contracts that keep AI coding agents inside their lane.",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "website"
   ],
   "bin": {
     "paraflow": "./dist/index.js"
@@ -13,9 +14,13 @@
     "build": "tsc -p tsconfig.json",
     "build:groveyard": "npm run build -w @groveyard/mcp",
     "build:worktree-mcp": "npm run build -w @groveyard/mcp",
-    "dev": "tsx src/index.ts",
+    "dev": "npm run dev:web",
+    "dev:orchestrator": "tsx src/index.ts",
+    "dev:paraflow": "tsx src/index.ts",
+    "dev:web": "npm run dev -w @groveyard/site",
     "dev:groveyard": "npm run dev -w @groveyard/mcp",
     "dev:worktree-mcp": "npm run dev -w @groveyard/mcp",
+    "build:web": "npm run build -w @groveyard/site",
     "test:groveyard": "npm run test -w @groveyard/mcp",
     "test:worktree-mcp": "npm run test -w @groveyard/mcp",
     "typecheck": "tsc -p tsconfig.json --noEmit"

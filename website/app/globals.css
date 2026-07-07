@@ -107,7 +107,7 @@ main {
 }
 
 .hero-section {
-  min-height: 88vh;
+  min-height: 86vh;
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
   align-items: center;
