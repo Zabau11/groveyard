@@ -44,6 +44,17 @@ The package has a minimal MCP server entrypoint and the first worktree lifecycle
 - `list_files`
 - `run_command_profile`
 
+Tool responses use a consistent JSON envelope:
+
+```json
+{
+  "ok": true,
+  "tool": "git_status",
+  "data": {},
+  "nextSteps": []
+}
+```
+
 Command profiles are loaded from `.worktree-mcp.yml` and run without shell evaluation:
 
 ```yaml
