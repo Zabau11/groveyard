@@ -1,14 +1,27 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
 const configFileName = ".worktree-mcp.yml";
 
+const safeRelativePathSchema = z
+  .string()
+  .min(1)
+  .transform((value) => normalize(value))
+  .refine((value) => !isAbsolute(value), "Path must be relative.")
+  .refine((value) => value !== ".." && !value.startsWith(`..${"/"}`) && !value.startsWith(`..${"\\"}`), "Path must not escape the repo.");
+
+const branchPrefixSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("/") && !value.startsWith("-"), "Branch prefix must not start with / or -.")
+  .refine((value) => !value.includes("..") && !value.includes(" ") && !value.includes("\\"), "Branch prefix contains unsafe characters.");
+
 const configSchema = z.object({
-  worktreesRoot: z.string().min(1).default(".agent-worktrees"),
-  branchPrefix: z.string().min(1).default("agent/"),
+  worktreesRoot: safeRelativePathSchema.default(".agent-worktrees"),
+  branchPrefix: branchPrefixSchema.default("agent/"),
   allowDirtyBase: z.boolean().default(false),
   commands: z.record(z.string().min(1)).default({}),
 });

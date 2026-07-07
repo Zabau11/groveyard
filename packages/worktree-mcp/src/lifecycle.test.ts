@@ -147,6 +147,33 @@ test("WorktreeSessionService rejects dirty base repositories", async () => {
   );
 });
 
+test("WorktreeSessionService honors worktree root, branch prefix, and dirty-base config", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+
+  await writeFile(
+    join(repo, ".worktree-mcp.yml"),
+    `worktreesRoot: .custom-worktrees
+branchPrefix: codex/
+allowDirtyBase: true
+`,
+    "utf8",
+  );
+  await writeFile(join(repo, "dirty.txt"), "dirty\n", "utf8");
+
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Configured session",
+    baseBranch: "main",
+  });
+
+  assert.match(created.worktreePath, /\.custom-worktrees\/sess_/);
+  assert.match(created.branch, /^codex\/configured-session-/);
+
+  const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
+  assert.equal(cleaned.status, "cleaned");
+});
+
 async function createRepo(): Promise<string> {
   const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-repo-"));
 

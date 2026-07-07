@@ -12,6 +12,22 @@ npm run dev:worktree-mcp
 npm run build:worktree-mcp
 ```
 
+## Configuration
+
+Repositories can define `.worktree-mcp.yml`:
+
+```yaml
+worktreesRoot: .agent-worktrees
+branchPrefix: agent/
+allowDirtyBase: false
+commands:
+  test: npm test
+  lint: npm run lint
+  build: npm run build
+```
+
+If no config exists, Worktree MCP uses the conservative defaults above with no command profiles enabled.
+
 ## Current Status
 
 The package has a minimal MCP server entrypoint and the first worktree lifecycle tools:

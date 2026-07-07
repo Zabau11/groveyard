@@ -22,8 +22,6 @@ import {
 } from "./command-runner.js";
 
 const metadataDirectory = ".worktree-mcp";
-const defaultWorktreesRoot = ".agent-worktrees";
-const defaultBranchPrefix = "agent/";
 
 export type CreateSessionInput = {
   repoPath?: string;
@@ -51,17 +49,21 @@ export type RunCommandProfileInput = SessionLookupInput & {
 export class WorktreeSessionService {
   async createSession(input: CreateSessionInput): Promise<SessionRecord> {
     const repoRoot = await this.resolveRepo(input.repoPath);
-    await assertCleanWorktree(repoRoot);
+    const config = await loadConfig(repoRoot);
+
+    if (!config.allowDirtyBase) {
+      await assertCleanWorktree(repoRoot);
+    }
 
     const taskSlug = slugify(input.taskName);
     const id = createSessionId();
     const suffix = id.replace(/^sess_/, "");
     const baseBranch = input.baseBranch ?? (await getCurrentBranch(repoRoot));
-    const branch = `${defaultBranchPrefix}${taskSlug}-${suffix}`;
-    const worktreePath = join(repoRoot, defaultWorktreesRoot, id);
+    const branch = `${config.branchPrefix}${taskSlug}-${suffix}`;
+    const worktreePath = join(repoRoot, config.worktreesRoot, id);
     const now = new Date().toISOString();
 
-    await mkdir(join(repoRoot, defaultWorktreesRoot), { recursive: true });
+    await mkdir(join(repoRoot, config.worktreesRoot), { recursive: true });
     await createGitWorktree(repoRoot, worktreePath, branch, baseBranch);
 
     const session: SessionRecord = {
@@ -92,10 +94,11 @@ export class WorktreeSessionService {
 
   async cleanupSession(input: SessionLookupInput): Promise<SessionRecord> {
     const repoRoot = await this.resolveRepo(input.repoPath);
+    const config = await loadConfig(repoRoot);
     const store = this.storeForRepo(repoRoot);
     const session = await store.get(input.sessionId);
 
-    assertOwnedWorktreePath(repoRoot, session.worktreePath);
+    assertOwnedWorktreePath(repoRoot, session.worktreePath, config.worktreesRoot);
     await removeGitWorktree(repoRoot, session.worktreePath);
 
     return store.update(input.sessionId, (current) => ({
@@ -191,8 +194,8 @@ export function slugify(value: string): string {
   return slug || "task";
 }
 
-export function assertOwnedWorktreePath(repoRoot: string, worktreePath: string): void {
-  const root = resolve(repoRoot, defaultWorktreesRoot);
+export function assertOwnedWorktreePath(repoRoot: string, worktreePath: string, worktreesRoot = ".agent-worktrees"): void {
+  const root = resolve(repoRoot, worktreesRoot);
   const target = resolve(worktreePath);
 
   if (target !== root && !target.startsWith(`${root}${sep}`)) {
