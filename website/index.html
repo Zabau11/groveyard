@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Groveyard - Safe worktrees for coding agents</title>
+    <meta
+      name="description"
+      content="Groveyard is an MCP server and CLI that gives coding agents safe Git worktree sessions, scoped commands, diffs, and cleanup."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand-mark" href="#top" aria-label="Groveyard home">
+        <pre class="ascii-logo brand-logo" aria-hidden="true">  ____                                      __
+ / ___|_ __ _____   _____ _   _  __ _ _ __ __| |
+| |  _| '__/ _ \ \ / / _ \ | | |/ _` | '__/ _` |
+| |_| | | | (_) \ V /  __/ |_| | (_| | | | (_| |
+ \____|_|  \___/ \_/ \___|\__, |\__,_|_|  \__,_|
+                          |___/</pre>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#advantages">Advantages</a>
+        <a href="#uses">Uses</a>
+        <a href="#setup">Setup</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero-section">
+        <div class="hero-copy">
+          <p class="eyebrow">MCP server for coding agents</p>
+          <h1>Groveyard</h1>
+          <p class="hero-lede">
+            Give agents their own Git worktree, approved commands, readable diffs, and a clean exit path. No shared working tree chaos.
+          </p>
+          <div class="command-strip" data-copy-text="npm install -g @groveyard/mcp">
+            <code>npm install -g @groveyard/mcp</code>
+            <button class="copy-button" type="button" aria-label="Copy install command">copy</button>
+          </div>
+          <div class="hero-actions">
+            <a class="primary-link" href="#setup">Connect an agent</a>
+            <a class="secondary-link" href="#advantages">Why it helps</a>
+          </div>
+        </div>
+
+        <div class="terminal-stage" aria-label="Groveyard terminal demo">
+          <div class="terminal-top">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="terminal-title">groveyard session</span>
+          </div>
+          <div class="terminal-body">
+            <pre class="ascii-wordmark" aria-label="Groveyard ASCII logo">  ____                                      __
+ / ___|_ __ _____   _____ _   _  __ _ _ __ __| |
+| |  _| '__/ _ \ \ / / _ \ | | |/ _` | '__/ _` |
+| |_| | | | (_) \ V /  __/ |_| | (_| | | | (_| |
+ \____|_|  \___/ \_/ \___|\__, |\__,_|_|  \__,_|
+                          |___/</pre>
+            <div class="terminal-feed" aria-live="polite">
+              <p><span class="prompt">$</span> <span data-terminal-line></span><span class="cursor" aria-hidden="true"></span></p>
+              <p class="feed-muted">worktree: sess_k41</p>
+              <p class="feed-ok">read, edit, diff, test, commit</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="signal-band" aria-label="Groveyard summary">
+        <div>
+          <strong>1 command</strong>
+          <span>detects agent configs</span>
+        </div>
+        <div>
+          <strong>1 worktree</strong>
+          <span>per coding task</span>
+        </div>
+        <div>
+          <strong>0 shell</strong>
+          <span>for command profiles</span>
+        </div>
+      </section>
+
+      <section class="content-section split-section" id="advantages">
+        <div>
+          <p class="eyebrow">Advantages</p>
+          <h2>Built for real repos, not demo prompts.</h2>
+          <p>
+            Groveyard gives an MCP-capable agent a predictable workspace and a narrow set of tools. The agent can create a session, inspect files, run configured checks, show a diff, and commit the work without touching your active tree.
+          </p>
+        </div>
+        <div class="advantage-grid">
+          <article>
+            <span class="card-kicker">Isolation</span>
+            <h3>Agents work in disposable branches</h3>
+            <p>Every task starts in a Git worktree with a tracked session id, branch, base branch, and cleanup path.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Control</span>
+            <h3>Commands come from your config</h3>
+            <p>Run test, lint, build, or typecheck profiles without handing the agent arbitrary shell access.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Review</span>
+            <h3>Status and diff are first-class</h3>
+            <p>The MCP flow pushes agents to inspect changed files before saying a task is done.</p>
+          </article>
+          <article>
+            <span class="card-kicker">Setup</span>
+            <h3>Connect detects local agent configs</h3>
+            <p>Groveyard finds Codex, Claude Desktop, and Cursor config locations, then asks before creating files.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section workflow-section" id="uses">
+        <div class="workflow-copy">
+          <p class="eyebrow">Use cases</p>
+          <h2>Let agents move faster while Git stays legible.</h2>
+          <p>
+            Use Groveyard when multiple coding agents, background tasks, or experiments need to work around the same repository without stomping on local changes.
+          </p>
+        </div>
+        <div class="workflow-visual" aria-hidden="true">
+          <svg viewBox="0 0 680 340">
+            <defs>
+              <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+                <path d="M 28 0 L 0 0 0 28" />
+              </pattern>
+            </defs>
+            <rect class="grid-fill" width="680" height="340" />
+            <path class="trunk" d="M88 170H592" />
+            <path class="branch branch-one" d="M210 170C250 102 312 82 392 92" />
+            <path class="branch branch-two" d="M292 170C336 238 404 258 500 236" />
+            <path class="branch branch-three" d="M392 170C430 128 478 116 548 126" />
+            <g class="node main-node"><circle cx="88" cy="170" r="10" /><text x="68" y="204">main</text></g>
+            <g class="node"><circle cx="392" cy="92" r="9" /><text x="338" y="70">agent/refactor</text></g>
+            <g class="node"><circle cx="500" cy="236" r="9" /><text x="462" y="272">agent/fix</text></g>
+            <g class="node"><circle cx="548" cy="126" r="9" /><text x="502" y="104">agent/docs</text></g>
+            <g class="node main-node"><circle cx="592" cy="170" r="10" /><text x="560" y="204">review</text></g>
+          </svg>
+        </div>
+        <div class="use-grid">
+          <article>
+            <h3>Parallel agent tasks</h3>
+            <p>Spin up independent sessions for bug fixes, refactors, and docs without dirtying your base checkout.</p>
+          </article>
+          <article>
+            <h3>Safe command execution</h3>
+            <p>Expose only named command profiles, then let the agent run the checks that matter for that repo.</p>
+          </article>
+          <article>
+            <h3>Cleaner review handoff</h3>
+            <p>Ask the agent for the session branch, diff, and commit SHA instead of hunting through a mixed tree.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section setup-section" id="setup">
+        <div>
+          <p class="eyebrow">Setup</p>
+          <h2>Connect once. Work in sessions.</h2>
+        </div>
+        <div class="setup-grid">
+          <article class="setup-step">
+            <span>01</span>
+            <h3>Install</h3>
+            <code>npm install -g @groveyard/mcp</code>
+          </article>
+          <article class="setup-step">
+            <span>02</span>
+            <h3>Connect</h3>
+            <code>groveyard connect</code>
+          </article>
+          <article class="setup-step">
+            <span>03</span>
+            <h3>Check repo</h3>
+            <code>groveyard doctor --repo .</code>
+          </article>
+          <article class="setup-step">
+            <span>04</span>
+            <h3>Let the agent create a session</h3>
+            <code>create_session</code>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-meta">
+        <span>Groveyard</span>
+        <span>Safe Git worktree sessions for coding agents.</span>
+      </div>
+      <pre class="ascii-logo footer-logo" role="img" aria-label="Groveyard">  ____                                      __
+ / ___|_ __ _____   _____ _   _  __ _ _ __ __| |
+| |  _| '__/ _ \ \ / / _ \ | | |/ _` | '__/ _` |
+| |_| | | | (_) \ V /  __/ |_| | (_| | | | (_| |
+ \____|_|  \___/ \_/ \___|\__, |\__,_|_|  \__,_|
+                          |___/</pre>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
