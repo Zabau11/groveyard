@@ -1,0 +1,116 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { WorktreeSessionService } from "./lifecycle.js";
+
+const execFileAsync = promisify(execFile);
+const distDirectory = dirname(fileURLToPath(import.meta.url));
+const cliPath = join(distDirectory, "index.js");
+
+test("CLI doctor reports repo config as JSON", async () => {
+  const repo = await createRepo();
+  await writeFile(
+    join(repo, ".worktree-mcp.yml"),
+    `worktreesRoot: .custom-worktrees
+branchPrefix: cli/
+allowDirtyBase: true
+commands:
+  test: npm test
+`,
+    "utf8",
+  );
+
+  const { stdout } = await runCli(["doctor", "--repo", repo, "--json"]);
+  const report = JSON.parse(stdout) as { status: string; repoRoot: string; config: { worktreesRoot: string; branchPrefix: string; allowDirtyBase: boolean } };
+
+  assert.equal(report.status, "ok");
+  assert.equal(report.repoRoot, repo);
+  assert.equal(report.config.worktreesRoot, ".custom-worktrees");
+  assert.equal(report.config.branchPrefix, "cli/");
+  assert.equal(report.config.allowDirtyBase, true);
+});
+
+test("CLI sessions, inspect, and clean operate on persisted sessions", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const session = await service.createSession({
+    repoPath: repo,
+    taskName: "CLI smoke",
+    baseBranch: "main",
+  });
+  await writeFile(join(session.worktreePath, "changed.txt"), "changed\n", "utf8");
+
+  const sessions = await runCli(["sessions", "--repo", repo, "--json"]);
+  const rows = JSON.parse(sessions.stdout) as Array<{ id: string }>;
+  assert.equal(rows[0]?.id, session.id);
+
+  const inspected = await runCli(["inspect", session.id, "--repo", repo, "--json"]);
+  const inspect = JSON.parse(inspected.stdout) as { session: { id: string }; status: string };
+  assert.equal(inspect.session.id, session.id);
+  assert.match(inspect.status, /\?\? changed\.txt/);
+
+  const cleaned = await runCli(["clean", session.id, "--repo", repo, "--json"]);
+  const cleanedSession = JSON.parse(cleaned.stdout) as { id: string; status: string };
+  assert.equal(cleanedSession.id, session.id);
+  assert.equal(cleanedSession.status, "cleaned");
+});
+
+test("CLI returns a nonzero exit for missing inspect session ID", async () => {
+  const result = await runCli(["inspect"], { reject: false });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /inspect requires a session ID/);
+});
+
+async function createRepo(): Promise<string> {
+  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-cli-repo-"));
+
+  await git(repo, ["init", "-b", "main"]);
+  await writeFile(join(repo, "README.md"), "# Test\n", "utf8");
+  await git(repo, ["add", "README.md"]);
+  await git(repo, ["-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"]);
+
+  return realpath(repo);
+}
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd });
+  return stdout;
+}
+
+async function runCli(
+  args: string[],
+  options: { reject?: boolean } = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], {
+      maxBuffer: 1024 * 1024 * 20,
+    });
+
+    return {
+      exitCode: 0,
+      stdout,
+      stderr,
+    };
+  } catch (error) {
+    if (options.reject !== false || !isExecError(error)) {
+      throw error;
+    }
+
+    return {
+      exitCode: typeof error.code === "number" ? error.code : 1,
+      stdout: error.stdout ?? "",
+      stderr: error.stderr ?? "",
+    };
+  }
+}
+
+function isExecError(error: unknown): error is Error & { code?: number | string; stdout?: string; stderr?: string } {
+  return error instanceof Error && ("stdout" in error || "stderr" in error || "code" in error);
+}

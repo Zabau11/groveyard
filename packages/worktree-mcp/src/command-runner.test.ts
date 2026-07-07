@@ -9,6 +9,10 @@ test("parseCommand supports simple quoted arguments", () => {
 
 test("parseCommand rejects shell syntax", () => {
   assert.throws(() => parseCommand("npm test && rm -rf ."), UnsafeCommandError);
+  assert.throws(() => parseCommand("npm test; rm -rf ."), UnsafeCommandError);
+  assert.throws(() => parseCommand("npm test | cat"), UnsafeCommandError);
+  assert.throws(() => parseCommand("npm test\nrm -rf ."), UnsafeCommandError);
   assert.throws(() => parseCommand("echo $HOME"), UnsafeCommandError);
   assert.throws(() => parseCommand("npm test > output.txt"), UnsafeCommandError);
+  assert.throws(() => parseCommand("echo 'unterminated"), UnsafeCommandError);
 });

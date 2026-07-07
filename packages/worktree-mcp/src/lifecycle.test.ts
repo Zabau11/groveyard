@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { WorktreeSessionService, assertOwnedWorktreePath, slugify } from "./lifecycle.js";
+import { JsonSessionStore } from "./session-store.js";
+import type { SessionRecord } from "./sessions.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -126,8 +128,35 @@ test("WorktreeSessionService rejects path escape attempts", async () => {
     () => service.writeFile({ repoPath: repo, sessionId: created.id, path: "secret-link.txt", content: "overwrite\n" }),
     /escapes the session worktree/,
   );
+  await symlink(outside, join(created.worktreePath, "outside-dir"));
+  await assert.rejects(
+    () => service.writeFile({ repoPath: repo, sessionId: created.id, path: "outside-dir/new.txt", content: "overwrite\n" }),
+    /escapes the session worktree/,
+  );
+
+  const files = await service.listFiles({ repoPath: repo, sessionId: created.id, path: "." });
+  assert.ok(!files.files.includes("secret-link.txt"));
+  assert.ok(!files.files.some((file) => file.startsWith("outside-dir/")));
 
   await service.cleanupSession({ repoPath: repo, sessionId: created.id });
+});
+
+test("WorktreeSessionService refuses cleanup for forged unowned session paths", async () => {
+  const repo = await createRepo();
+  const outside = await mkdtemp(join(tmpdir(), "worktree-mcp-outside-"));
+  const session = exampleSession({
+    repoPath: repo,
+    worktreePath: outside,
+  });
+  const store = new JsonSessionStore(join(repo, ".worktree-mcp", "sessions.json"));
+  const service = new WorktreeSessionService();
+
+  await store.add(session);
+
+  await assert.rejects(
+    () => service.cleanupSession({ repoPath: repo, sessionId: session.id }),
+    /Refusing to clean up unowned worktree path/,
+  );
 });
 
 test("WorktreeSessionService rejects dirty base repositories", async () => {
@@ -188,4 +217,19 @@ async function createRepo(): Promise<string> {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout;
+}
+
+function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
+  return {
+    id: "sess_forged",
+    repoPath: "/repo",
+    worktreePath: "/repo/.agent-worktrees/sess_forged",
+    branch: "agent/forged",
+    baseBranch: "main",
+    taskName: "forged",
+    status: "active",
+    createdAt: "2026-07-07T12:00:00.000Z",
+    updatedAt: "2026-07-07T12:00:00.000Z",
+    ...overrides,
+  };
 }
