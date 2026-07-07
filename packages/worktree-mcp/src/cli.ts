@@ -43,6 +43,9 @@ export async function runCli(argv: string[]): Promise<void> {
       case "inspect":
         await inspect(service, args);
         return;
+      case "commit":
+        await commit(service, args);
+        return;
       case "clean":
         await clean(service, args);
         return;
@@ -218,6 +221,26 @@ async function clean(service: WorktreeSessionService, args: ParsedArgs): Promise
   console.log(`Cleaned ${session.id}`);
 }
 
+async function commit(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
+  const sessionId = requireSessionId(args);
+  const message = readOptionValue(args.positional, "-m") ?? readOptionValue(args.positional, "--message");
+
+  if (!message) {
+    throw new Error("commit requires a message. Use -m \"message\".");
+  }
+
+  const result = await service.commitSession({ repoPath: args.repoPath, sessionId, message });
+
+  if (args.json) {
+    printJson(result);
+    return;
+  }
+
+  console.log(`Committed ${result.commit.sha}`);
+  console.log(`Branch: ${result.session.branch}`);
+  console.log(`Status: ${result.status || "clean"}`);
+}
+
 function requireSessionId(args: ParsedArgs): string {
   const sessionId = args.positional[0];
 
@@ -245,6 +268,7 @@ Usage:
   groveyard doctor [--repo PATH]    Check repo/config readiness
   groveyard sessions [--repo PATH]  List registered sessions
   groveyard inspect <sessionId>     Show session metadata and status
+  groveyard commit <sessionId> -m "message"
   groveyard clean <sessionId>       Remove a registered session worktree
 
 Options:
@@ -252,6 +276,17 @@ Options:
   --json        Print JSON output for CLI commands
   --force       Overwrite files for commands that support it
 `);
+}
+
+function readOptionValue(values: string[], name: string): string | undefined {
+  const index = values.indexOf(name);
+
+  if (index === -1) {
+    const prefix = `${name}=`;
+    return values.find((value) => value.startsWith(prefix))?.slice(prefix.length);
+  }
+
+  return values[index + 1];
 }
 
 async function detectCommandProfiles(repoRoot: string): Promise<Record<string, string>> {

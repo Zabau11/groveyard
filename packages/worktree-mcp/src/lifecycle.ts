@@ -4,6 +4,8 @@ import { join, resolve, sep } from "node:path";
 
 import {
   assertCleanWorktree,
+  type GitCommitResult,
+  commitAllChanges,
   createGitWorktree,
   getCurrentBranch,
   gitDiff,
@@ -44,6 +46,10 @@ export type SessionWriteFileInput = SessionFileInput & {
 
 export type RunCommandProfileInput = SessionLookupInput & {
   profile: string;
+};
+
+export type CommitSessionInput = SessionLookupInput & {
+  message: string;
 };
 
 export class WorktreeSessionService {
@@ -172,6 +178,17 @@ export class WorktreeSessionService {
     return {
       session,
       result: await executeCommandProfile(session.worktreePath, input.profile, command),
+    };
+  }
+
+  async commitSession(input: CommitSessionInput): Promise<{ session: SessionRecord; commit: GitCommitResult; status: string }> {
+    const session = await this.getSession(input);
+    const commit = await commitAllChanges(session.worktreePath, input.message);
+
+    return {
+      session,
+      commit,
+      status: await gitStatusShort(session.worktreePath),
     };
   }
 

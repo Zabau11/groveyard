@@ -55,6 +55,12 @@ test("CLI sessions, inspect, and clean operate on persisted sessions", async () 
   assert.equal(inspect.session.id, session.id);
   assert.match(inspect.status, /\?\? changed\.txt/);
 
+  const committed = await runCli(["commit", session.id, "-m", "CLI commit", "--repo", repo, "--json"]);
+  const commit = JSON.parse(committed.stdout) as { commit: { sha: string; message: string }; status: string };
+  assert.match(commit.commit.sha, /^[a-f0-9]{40}$/);
+  assert.equal(commit.commit.message, "CLI commit");
+  assert.equal(commit.status, "");
+
   const cleaned = await runCli(["clean", session.id, "--repo", repo, "--json"]);
   const cleanedSession = JSON.parse(cleaned.stdout) as { id: string; status: string };
   assert.equal(cleanedSession.id, session.id);
@@ -113,6 +119,13 @@ test("CLI returns a nonzero exit for missing inspect session ID", async () => {
 
   assert.equal(result.exitCode, 1);
   assert.match(result.stderr, /inspect requires a session ID/);
+});
+
+test("CLI commit requires a message", async () => {
+  const result = await runCli(["commit", "sess_missing"], { reject: false });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /commit requires a message/);
 });
 
 test("CLI init help does not create a config file", async () => {

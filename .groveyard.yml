@@ -1,0 +1,6 @@
+worktreesRoot: .agent-worktrees
+branchPrefix: agent/
+allowDirtyBase: false
+commands:
+  build: npm run build
+  typecheck: npm run typecheck

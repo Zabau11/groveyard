@@ -30,6 +30,7 @@ groveyard init
 groveyard doctor
 groveyard sessions
 groveyard inspect <sessionId>
+groveyard commit <sessionId> -m "message"
 groveyard clean <sessionId>
 ```
 
@@ -68,6 +69,7 @@ The package has a minimal MCP server entrypoint and the first worktree lifecycle
 - `write_file`
 - `list_files`
 - `run_command_profile`
+- `commit_session`
 
 Tool responses use a consistent JSON envelope:
 

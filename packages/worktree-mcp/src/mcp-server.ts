@@ -25,7 +25,7 @@ export async function startMcpServer(): Promise<void> {
         version: "0.1.0",
         description: "Safe Git worktree sessions for coding agents.",
         status: "mvp",
-        workflow: ["create_session", "read_file/list_files", "write_file", "run_command_profile", "git_status", "git_diff"],
+        workflow: ["create_session", "read_file/list_files", "write_file", "run_command_profile", "git_status", "git_diff", "commit_session"],
       }),
   );
 
@@ -148,6 +148,21 @@ export async function startMcpServer(): Promise<void> {
       jsonResponse("run_command_profile", await sessionService.runCommandProfile({ repoPath, sessionId, profile }), [
         "Inspect exitCode, stdout, and stderr before deciding whether the task is complete.",
         "Call git_status and git_diff after successful edits.",
+      ]),
+  );
+
+  server.tool(
+    "commit_session",
+    "Stage all changes in a registered worktree session and create a Git commit on the session branch.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+      message: z.string().min(1).describe("Commit message to use for the session changes."),
+    },
+    async ({ repoPath, sessionId, message }) =>
+      jsonResponse("commit_session", await sessionService.commitSession({ repoPath, sessionId, message }), [
+        "Use the returned commit SHA and branch for review, push, or PR workflows.",
+        "Call cleanup_session only after the user no longer needs the worktree.",
       ]),
   );
 

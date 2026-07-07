@@ -69,6 +69,28 @@ export async function gitDiff(worktreePath: string): Promise<string> {
   return [trackedDiff, ...untrackedDiffs].filter(Boolean).join("\n");
 }
 
+export type GitCommitResult = {
+  sha: string;
+  message: string;
+};
+
+export async function commitAllChanges(worktreePath: string, message: string): Promise<GitCommitResult> {
+  const status = await runGit(worktreePath, ["status", "--porcelain"]);
+
+  if (!status) {
+    throw new Error("No changes to commit.");
+  }
+
+  await runGit(worktreePath, ["add", "--all"]);
+  await runGit(worktreePath, ["commit", "-m", message]);
+  const sha = await runGit(worktreePath, ["rev-parse", "HEAD"]);
+
+  return {
+    sha,
+    message,
+  };
+}
+
 async function gitUntrackedFiles(worktreePath: string): Promise<string[]> {
   const stdout = await runGit(worktreePath, ["ls-files", "--others", "--exclude-standard"]);
   return stdout.split("\n").map((line) => line.trim()).filter(Boolean);

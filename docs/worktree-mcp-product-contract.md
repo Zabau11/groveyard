@@ -44,6 +44,7 @@ Required MCP tools:
 - `git_status`: return `git status --short` for a session.
 - `git_diff`: return the current patch for a session.
 - `run_command_profile`: run a named command from repo config inside the session.
+- `commit_session`: stage all session changes and create a commit on the session branch.
 
 ## Explicit Non-Goals
 

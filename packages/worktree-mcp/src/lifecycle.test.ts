@@ -97,6 +97,20 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   assert.match(diff.diff, /diff --git a\/src\/new-file\.txt b\/src\/new-file\.txt/);
   assert.match(diff.diff, /new file/);
 
+  const committed = await service.commitSession({
+    repoPath: repo,
+    sessionId: created.id,
+    message: "Commit session changes",
+  });
+  assert.match(committed.commit.sha, /^[a-f0-9]{40}$/);
+  assert.equal(committed.commit.message, "Commit session changes");
+  assert.equal(committed.status, "");
+
+  await assert.rejects(
+    () => service.commitSession({ repoPath: repo, sessionId: created.id, message: "Empty commit" }),
+    /No changes to commit/,
+  );
+
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
   assert.equal(cleaned.status, "cleaned");
 });
