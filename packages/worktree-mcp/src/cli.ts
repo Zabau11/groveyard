@@ -31,6 +31,8 @@ type ConnectWriteResult = AgentConfigTarget & {
   action: "created" | "updated" | "skipped";
 };
 
+const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
+
 export async function runCli(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const service = new WorktreeSessionService();
@@ -146,12 +148,14 @@ async function init(args: ParsedArgs): Promise<void> {
 
   const commands = await withSpinner("Detecting package scripts", () => detectCommandProfiles(repoRoot), args.json);
   await withSpinner("Writing .groveyard.yml", () => writeFile(configPath, renderConfig(commands), "utf8"), args.json);
+  const gitignore = await withSpinner("Updating .gitignore", () => ensureGroveyardGitignore(repoRoot), args.json);
 
   const report = {
     status: "created",
     repoRoot,
     configPath,
     commands,
+    gitignore,
   };
 
   if (args.json) {
@@ -165,6 +169,7 @@ async function init(args: ParsedArgs): Promise<void> {
   console.log(`${style("Branch prefix", "cyan")}: agent/`);
   console.log(`${style("Dirty base", "cyan")}: rejected`);
   console.log(`${style("Command profiles", "cyan")}: ${formatCommandProfiles(commands)}`);
+  console.log(`${style("Ignored", "cyan")}: ${groveyardIgnoreEntries.join(", ")}`);
   console.log("");
   console.log(style("Next", "bold"));
   console.log(`  ${style("groveyard doctor", "green")}`);
@@ -640,4 +645,37 @@ function renderConfig(commands: Record<string, string>): string {
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+async function ensureGroveyardGitignore(repoRoot: string): Promise<{ path: string; added: string[]; entries: string[] }> {
+  const gitignorePath = join(repoRoot, ".gitignore");
+  const existing = existsSync(gitignorePath) ? await readFile(gitignorePath, "utf8") : "";
+  const existingKeys = new Set(
+    existing
+      .split(/\r?\n/)
+      .map((line) => normalizeGitignoreEntry(line))
+      .filter((line) => line.length > 0),
+  );
+  const added = groveyardIgnoreEntries.filter((entry) => !existingKeys.has(normalizeGitignoreEntry(entry)));
+
+  if (added.length > 0) {
+    const prefix = existing.trimEnd();
+    await writeFile(gitignorePath, `${prefix}${prefix ? "\n\n" : ""}# Groveyard\n${added.join("\n")}\n`, "utf8");
+  }
+
+  return {
+    path: gitignorePath,
+    added,
+    entries: groveyardIgnoreEntries,
+  };
+}
+
+function normalizeGitignoreEntry(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed.startsWith("#")) {
+    return "";
+  }
+
+  return trimmed.replace(/^\/+/, "").replace(/\/+$/, "");
 }

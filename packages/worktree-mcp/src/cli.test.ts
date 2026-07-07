@@ -148,8 +148,9 @@ test("CLI init creates config from package scripts", async () => {
   );
 
   const result = await runCli(["init", "--repo", repo, "--json"]);
-  const report = JSON.parse(result.stdout) as { status: string; commands: Record<string, string> };
+  const report = JSON.parse(result.stdout) as { status: string; commands: Record<string, string>; gitignore: { added: string[] } };
   const config = await readFile(join(repo, ".groveyard.yml"), "utf8");
+  const gitignore = await readFile(join(repo, ".gitignore"), "utf8");
 
   assert.equal(report.status, "created");
   assert.deepEqual(report.commands, {
@@ -158,7 +159,26 @@ test("CLI init creates config from package scripts", async () => {
     lint: "npm run lint",
     typecheck: "npm run typecheck",
   });
+  assert.deepEqual(report.gitignore.added, [".agent-worktrees/", ".groveyard/"]);
   assert.match(config, /commands:\n  test: npm test\n  build: npm run build\n  lint: npm run lint\n  typecheck: npm run typecheck/);
+  assert.match(gitignore, /# Groveyard\n\.agent-worktrees\/\n\.groveyard\//);
+});
+
+test("CLI init preserves existing gitignore entries without duplicating Groveyard ignores", async () => {
+  const repo = await createRepo();
+  await writeFile(join(repo, ".gitignore"), "node_modules/\n.agent-worktrees\n", "utf8");
+
+  const result = await runCli(["init", "--repo", repo, "--json"]);
+  const report = JSON.parse(result.stdout) as { gitignore: { added: string[] } };
+  const gitignore = await readFile(join(repo, ".gitignore"), "utf8");
+  const normalizedLines = gitignore
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/\/+$/, ""));
+
+  assert.deepEqual(report.gitignore.added, [".groveyard/"]);
+  assert.match(gitignore, /node_modules/);
+  assert.equal(normalizedLines.filter((line) => line === ".agent-worktrees").length, 1);
+  assert.equal(normalizedLines.filter((line) => line === ".groveyard").length, 1);
 });
 
 test("CLI init refuses overwrite unless forced", async () => {
