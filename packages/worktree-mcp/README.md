@@ -12,6 +12,19 @@ npm run dev:worktree-mcp
 npm run build:worktree-mcp
 ```
 
+## CLI
+
+Running `worktree-mcp` without a subcommand starts the stdio MCP server. Human debugging commands are also available:
+
+```bash
+worktree-mcp doctor
+worktree-mcp sessions
+worktree-mcp inspect <sessionId>
+worktree-mcp clean <sessionId>
+```
+
+Each command accepts `--repo <path>` and `--json`.
+
 ## Configuration
 
 Repositories can define `.worktree-mcp.yml`:
