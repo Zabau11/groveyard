@@ -1,5 +1,6 @@
-import { AsciiLogo } from "./components/AsciiLogo";
 import { CommandStrip } from "./components/CommandStrip";
+import { Header } from "./components/Header";
+import { AsciiLogo } from "./components/AsciiLogo";
 import { TerminalDemo } from "./components/TerminalDemo";
 
 const advantages = [
@@ -50,16 +51,7 @@ const setupSteps = [
 export default function Home() {
   return (
     <>
-      <header className="site-header">
-        <a className="brand-mark" href="#top" aria-label="Groveyard home">
-          <AsciiLogo className="brand-logo" decorative />
-        </a>
-        <nav className="site-nav" aria-label="Primary">
-          <a href="#advantages">Advantages</a>
-          <a href="#uses">Uses</a>
-          <a href="#setup">Setup</a>
-        </nav>
-      </header>
+      <Header />
 
       <main id="top">
         <section className="hero-section">
