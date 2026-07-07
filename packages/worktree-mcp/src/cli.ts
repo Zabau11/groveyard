@@ -398,7 +398,7 @@ function printLogo(): void {
   ];
 
   for (const line of logo) {
-    console.log(style(line, "cyan"));
+    console.log(style(line, "green"));
   }
 }
 
@@ -410,7 +410,7 @@ async function withSpinner<T>(label: string, task: () => Promise<T>, silent: boo
   const frames = ["-", "\\", "|", "/"];
   let index = 0;
   const timer = setInterval(() => {
-    process.stdout.write(`\r\x1b[2K${style(frames[index % frames.length]!, "cyan")} ${label}`);
+    process.stdout.write(`\r\x1b[2K${style(frames[index % frames.length]!, "green")} ${label}`);
     index += 1;
   }, 80);
 
@@ -421,7 +421,7 @@ async function withSpinner<T>(label: string, task: () => Promise<T>, silent: boo
     return result;
   } catch (error) {
     clearInterval(timer);
-    process.stdout.write(`\r\x1b[2K${style("fail", "yellow")} ${label}\n`);
+    process.stdout.write(`\r\x1b[2K${style("fail", "red")} ${label}\n`);
     throw error;
   }
 }
@@ -578,17 +578,18 @@ function isInteractive(): boolean {
   return Boolean(process.stdout.isTTY && !process.env.CI);
 }
 
-function style(value: string, color: "bold" | "dim" | "green" | "cyan" | "yellow"): string {
+function style(value: string, color: "bold" | "dim" | "green" | "cyan" | "yellow" | "red"): string {
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
     return value;
   }
 
   const codes = {
     bold: ["\x1b[1m", "\x1b[22m"],
-    dim: ["\x1b[2m", "\x1b[22m"],
-    green: ["\x1b[32m", "\x1b[39m"],
-    cyan: ["\x1b[36m", "\x1b[39m"],
-    yellow: ["\x1b[33m", "\x1b[39m"],
+    dim: ["\x1b[38;2;158;164;155m", "\x1b[39m"],
+    green: ["\x1b[38;2;76;255;146m", "\x1b[39m"],
+    cyan: ["\x1b[38;2;76;255;146m", "\x1b[39m"],
+    yellow: ["\x1b[38;2;244;211;94m", "\x1b[39m"],
+    red: ["\x1b[38;2;255;94;87m", "\x1b[39m"],
   } satisfies Record<typeof color, [string, string]>;
 
   const [open, close] = codes[color];

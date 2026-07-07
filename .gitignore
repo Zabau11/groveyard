@@ -1,6 +1,8 @@
 node_modules/
 dist/
 website/.next/
+.agent-worktrees/
+.groveyard/
 .paraflow/runs/
 .paraflow/worktrees/
 .DS_Store
