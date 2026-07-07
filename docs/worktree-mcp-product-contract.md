@@ -1,8 +1,8 @@
-# Worktree MCP Product Contract
+# Groveyard Product Contract
 
 ## Product Promise
 
-Worktree MCP gives AI coding agents safe, disposable Git workspaces.
+Groveyard gives AI coding agents safe, disposable Git workspaces.
 
 An agent connects through MCP, asks for a session, works inside an isolated Git worktree, runs approved checks, returns a diff, and leaves the user's main checkout clean.
 
@@ -72,7 +72,7 @@ The server must enforce these guarantees before it is considered usable:
 
 ## Configuration Contract
 
-Each repository may define `.worktree-mcp.yml`.
+Each repository may define `.groveyard.yml`.
 
 Initial shape:
 
@@ -124,7 +124,7 @@ Safe Git worktree sessions for coding agents.
 Longer description:
 
 ```text
-Worktree MCP is a local MCP server that gives coding agents isolated Git worktrees, scoped file access, approved command execution, diff review, and cleanup.
+Groveyard is a local MCP server that gives coding agents isolated Git worktrees, scoped file access, approved command execution, diff review, and cleanup.
 ```
 
 ## Success Criteria

@@ -65,7 +65,7 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   assert.deepEqual(files.files, ["README.md", "changed.txt", "src/new-file.txt"]);
 
   await writeFile(
-    join(repo, ".worktree-mcp.yml"),
+    join(repo, ".groveyard.yml"),
     `commands:
   echo: node scripts/echo.mjs
   fail: node scripts/fail.mjs
@@ -103,7 +103,7 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
 
 test("WorktreeSessionService rejects path escape attempts", async () => {
   const repo = await createRepo();
-  const outside = await mkdtemp(join(tmpdir(), "worktree-mcp-outside-"));
+  const outside = await mkdtemp(join(tmpdir(), "groveyard-outside-"));
   const service = new WorktreeSessionService();
   const created = await service.createSession({
     repoPath: repo,
@@ -145,12 +145,12 @@ test("WorktreeSessionService rejects path escape attempts", async () => {
 
 test("WorktreeSessionService refuses cleanup for forged unowned session paths", async () => {
   const repo = await createRepo();
-  const outside = await mkdtemp(join(tmpdir(), "worktree-mcp-outside-"));
+  const outside = await mkdtemp(join(tmpdir(), "groveyard-outside-"));
   const session = exampleSession({
     repoPath: repo,
     worktreePath: outside,
   });
-  const store = new JsonSessionStore(join(repo, ".worktree-mcp", "sessions.json"));
+  const store = new JsonSessionStore(join(repo, ".groveyard", "sessions.json"));
   const service = new WorktreeSessionService();
 
   await store.add(session);
@@ -183,7 +183,7 @@ test("WorktreeSessionService honors worktree root, branch prefix, and dirty-base
   const service = new WorktreeSessionService();
 
   await writeFile(
-    join(repo, ".worktree-mcp.yml"),
+    join(repo, ".groveyard.yml"),
     `worktreesRoot: .custom-worktrees
 branchPrefix: codex/
 allowDirtyBase: true
@@ -206,7 +206,7 @@ allowDirtyBase: true
 });
 
 async function createRepo(): Promise<string> {
-  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-repo-"));
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-repo-"));
 
   await git(repo, ["init", "-b", "main"]);
   await writeFile(join(repo, "README.md"), "# Test\n", "utf8");

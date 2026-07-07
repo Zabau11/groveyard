@@ -1,6 +1,6 @@
-# Worktree MCP Install And Use
+# Groveyard Install And Use
 
-Worktree MCP is a local stdio MCP server for coding agents. It gives agents isolated Git worktree sessions, scoped file access, approved command profiles, status/diff review, and cleanup.
+Groveyard is a local stdio MCP server for coding agents. It gives agents isolated Git worktree sessions, scoped file access, approved command profiles, status/diff review, and cleanup.
 
 ## Local Build
 
@@ -8,13 +8,13 @@ From this repository:
 
 ```bash
 npm install
-npm run build:worktree-mcp
+npm run build:groveyard
 ```
 
-The server entrypoint is:
+The local server entrypoint is:
 
 ```text
-/Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js
+packages/worktree-mcp/dist/index.js
 ```
 
 ## Smoke Test
@@ -22,14 +22,14 @@ The server entrypoint is:
 Run the human CLI first:
 
 ```bash
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js doctor --repo .
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js sessions --repo .
+node packages/worktree-mcp/dist/index.js doctor --repo .
+node packages/worktree-mcp/dist/index.js sessions --repo .
 ```
 
 Expected shape:
 
 ```text
-Worktree MCP doctor: ok
+Groveyard doctor: ok
 Repo: /path/to/repo
 Config: defaults
 Worktrees: .agent-worktrees
@@ -41,14 +41,23 @@ Command profiles: none
 Running without a subcommand starts the MCP stdio server:
 
 ```bash
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js
+node packages/worktree-mcp/dist/index.js
 ```
 
 That mode waits for an MCP client and will not print normal terminal output.
 
 ## Repository Config
 
-Add `.worktree-mcp.yml` to any repo where agents should work:
+Run `groveyard init` in any repo where agents should work:
+
+```bash
+groveyard init
+groveyard doctor
+```
+
+It detects common npm scripts such as `test`, `build`, `lint`, and `typecheck`, then writes `.groveyard.yml`.
+
+You can also create `.groveyard.yml` manually:
 
 ```yaml
 worktreesRoot: .agent-worktrees
@@ -70,12 +79,25 @@ Command profiles are allowlisted. Agents call `run_command_profile` with a profi
 
 ## MCP Client Config
 
-Use this server config in an MCP-capable agent:
+Use this server config in an MCP-capable agent after publishing:
 
 ```json
 {
   "mcpServers": {
-    "worktree-mcp": {
+    "groveyard": {
+      "command": "npx",
+      "args": ["-y", "@groveyard/mcp"]
+    }
+  }
+}
+```
+
+For local development before publishing:
+
+```json
+{
+  "mcpServers": {
+    "groveyard": {
       "command": "node",
       "args": [
         "/Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js"
@@ -120,20 +142,21 @@ Minimum useful flow:
 After an agent creates sessions, inspect them from a terminal:
 
 ```bash
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js sessions --repo .
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js inspect <sessionId> --repo .
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js clean <sessionId> --repo .
+npx -y @groveyard/mcp init --repo .
+npx -y @groveyard/mcp sessions --repo .
+npx -y @groveyard/mcp inspect <sessionId> --repo .
+npx -y @groveyard/mcp clean <sessionId> --repo .
 ```
 
 Add `--json` for machine-readable output:
 
 ```bash
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js inspect <sessionId> --repo . --json
+npx -y @groveyard/mcp inspect <sessionId> --repo . --json
 ```
 
 ## Notes
 
-- Worktree MCP stores session metadata in `.worktree-mcp/sessions.json`.
+- Groveyard stores session metadata in `.groveyard/sessions.json`.
 - Worktrees are created under the configured `worktreesRoot`.
 - File tools reject absolute paths, `..` escapes, and unsafe symlink escapes.
 - `git_diff` includes modified tracked files and untracked new files.

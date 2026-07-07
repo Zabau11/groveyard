@@ -4,7 +4,7 @@ import { isAbsolute, join, normalize } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
-const configFileName = ".worktree-mcp.yml";
+const configFileName = ".groveyard.yml";
 
 const safeRelativePathSchema = z
   .string()

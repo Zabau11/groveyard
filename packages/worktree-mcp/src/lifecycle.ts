@@ -21,7 +21,7 @@ import {
   runCommandProfile as executeCommandProfile,
 } from "./command-runner.js";
 
-const metadataDirectory = ".worktree-mcp";
+const metadataDirectory = ".groveyard";
 
 export type CreateSessionInput = {
   repoPath?: string;

@@ -7,7 +7,7 @@ import test from "node:test";
 import { loadConfig } from "./config.js";
 
 test("loadConfig returns conservative defaults without a config file", async () => {
-  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-config-"));
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-config-"));
 
   assert.deepEqual(await loadConfig(repo), {
     worktreesRoot: ".agent-worktrees",
@@ -18,9 +18,9 @@ test("loadConfig returns conservative defaults without a config file", async () 
 });
 
 test("loadConfig parses configured worktree settings", async () => {
-  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-config-"));
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-config-"));
   await writeFile(
-    join(repo, ".worktree-mcp.yml"),
+    join(repo, ".groveyard.yml"),
     `worktreesRoot: .custom-worktrees
 branchPrefix: codex/
 allowDirtyBase: true
@@ -41,11 +41,11 @@ commands:
 });
 
 test("loadConfig rejects unsafe roots and branch prefixes", async () => {
-  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-config-"));
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-config-"));
 
-  await writeFile(join(repo, ".worktree-mcp.yml"), "worktreesRoot: ../outside\n", "utf8");
+  await writeFile(join(repo, ".groveyard.yml"), "worktreesRoot: ../outside\n", "utf8");
   await assert.rejects(() => loadConfig(repo), /Path must not escape the repo/);
 
-  await writeFile(join(repo, ".worktree-mcp.yml"), "branchPrefix: ../bad\n", "utf8");
+  await writeFile(join(repo, ".groveyard.yml"), "branchPrefix: ../bad\n", "utf8");
   await assert.rejects(() => loadConfig(repo), /Branch prefix contains unsafe characters/);
 });

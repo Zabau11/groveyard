@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import { loadConfig } from "./config.js";
 import { resolveRepoRoot } from "./git.js";
@@ -11,6 +12,7 @@ type ParsedArgs = {
   repoPath?: string;
   positional: string[];
   json: boolean;
+  force: boolean;
 };
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -18,6 +20,11 @@ export async function runCli(argv: string[]): Promise<void> {
   const service = new WorktreeSessionService();
 
   try {
+    if (args.positional.includes("--help") || args.positional.includes("-h")) {
+      printHelp();
+      return;
+    }
+
     switch (args.command) {
       case "help":
       case "--help":
@@ -26,6 +33,9 @@ export async function runCli(argv: string[]): Promise<void> {
         return;
       case "doctor":
         await doctor(args);
+        return;
+      case "init":
+        await init(args);
         return;
       case "sessions":
         await sessions(service, args);
@@ -50,6 +60,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   let repoPath: string | undefined;
   let json = false;
+  let force = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -70,6 +81,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === "--force") {
+      force = true;
+      continue;
+    }
+
     if (value) {
       positional.push(value);
     }
@@ -80,13 +96,48 @@ function parseArgs(argv: string[]): ParsedArgs {
     repoPath,
     positional,
     json,
+    force,
   };
+}
+
+async function init(args: ParsedArgs): Promise<void> {
+  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  const configPath = join(repoRoot, ".groveyard.yml");
+
+  if (existsSync(configPath) && !args.force) {
+    throw new Error(".groveyard.yml already exists. Use --force to overwrite it.");
+  }
+
+  const commands = await detectCommandProfiles(repoRoot);
+  await writeFile(configPath, renderConfig(commands), "utf8");
+
+  const report = {
+    status: "created",
+    repoRoot,
+    configPath,
+    commands,
+  };
+
+  if (args.json) {
+    printJson(report);
+    return;
+  }
+
+  console.log("Created .groveyard.yml");
+  console.log("");
+  console.log("Worktrees: .agent-worktrees");
+  console.log("Branch prefix: agent/");
+  console.log("Dirty base: rejected");
+  console.log(`Command profiles: ${Object.keys(commands).length ? Object.keys(commands).join(", ") : "none"}`);
+  console.log("");
+  console.log("Next:");
+  console.log("  groveyard doctor");
 }
 
 async function doctor(args: ParsedArgs): Promise<void> {
   const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
   const config = await loadConfig(repoRoot);
-  const configPath = resolve(repoRoot, ".worktree-mcp.yml");
+  const configPath = resolve(repoRoot, ".groveyard.yml");
 
   const report = {
     status: "ok",
@@ -101,7 +152,7 @@ async function doctor(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  console.log("Worktree MCP doctor: ok");
+  console.log("Groveyard doctor: ok");
   console.log(`Repo: ${repoRoot}`);
   console.log(`Config: ${report.configExists ? configPath : "defaults"}`);
   console.log(`Worktrees: ${config.worktreesRoot}`);
@@ -119,7 +170,7 @@ async function sessions(service: WorktreeSessionService, args: ParsedArgs): Prom
   }
 
   if (rows.length === 0) {
-    console.log("No Worktree MCP sessions found.");
+    console.log("No Groveyard sessions found.");
     return;
   }
 
@@ -186,17 +237,54 @@ function printJson(value: unknown): void {
 }
 
 function printHelp(): void {
-  console.log(`Worktree MCP
+  console.log(`Groveyard
 
 Usage:
-  worktree-mcp                         Start the stdio MCP server
-  worktree-mcp doctor [--repo PATH]    Check repo/config readiness
-  worktree-mcp sessions [--repo PATH]  List registered sessions
-  worktree-mcp inspect <sessionId>     Show session metadata and status
-  worktree-mcp clean <sessionId>       Remove a registered session worktree
+  groveyard                         Start the stdio MCP server
+  groveyard init [--repo PATH]      Create .groveyard.yml
+  groveyard doctor [--repo PATH]    Check repo/config readiness
+  groveyard sessions [--repo PATH]  List registered sessions
+  groveyard inspect <sessionId>     Show session metadata and status
+  groveyard clean <sessionId>       Remove a registered session worktree
 
 Options:
   --repo PATH   Path inside the Git repository
   --json        Print JSON output for CLI commands
+  --force       Overwrite files for commands that support it
 `);
+}
+
+async function detectCommandProfiles(repoRoot: string): Promise<Record<string, string>> {
+  const packageJsonPath = join(repoRoot, "package.json");
+
+  if (!existsSync(packageJsonPath)) {
+    return {};
+  }
+
+  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8")) as { scripts?: Record<string, string> };
+  const scripts = packageJson.scripts ?? {};
+  const commands: Record<string, string> = {};
+
+  for (const scriptName of ["test", "build", "lint", "typecheck"]) {
+    if (scripts[scriptName]) {
+      commands[scriptName] = scriptName === "test" ? "npm test" : `npm run ${scriptName}`;
+    }
+  }
+
+  return commands;
+}
+
+function renderConfig(commands: Record<string, string>): string {
+  const lines = ["worktreesRoot: .agent-worktrees", "branchPrefix: agent/", "allowDirtyBase: false", "commands:"];
+  const entries = Object.entries(commands);
+
+  if (entries.length === 0) {
+    lines.push("  {}");
+  } else {
+    for (const [name, command] of entries) {
+      lines.push(`  ${name}: ${command}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
 }

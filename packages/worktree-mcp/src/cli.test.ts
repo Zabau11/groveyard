@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -16,7 +16,7 @@ const cliPath = join(distDirectory, "index.js");
 test("CLI doctor reports repo config as JSON", async () => {
   const repo = await createRepo();
   await writeFile(
-    join(repo, ".worktree-mcp.yml"),
+    join(repo, ".groveyard.yml"),
     `worktreesRoot: .custom-worktrees
 branchPrefix: cli/
 allowDirtyBase: true
@@ -61,6 +61,53 @@ test("CLI sessions, inspect, and clean operate on persisted sessions", async () 
   assert.equal(cleanedSession.status, "cleaned");
 });
 
+test("CLI init creates config from package scripts", async () => {
+  const repo = await createRepo();
+  await writeFile(
+    join(repo, "package.json"),
+    JSON.stringify(
+      {
+        scripts: {
+          test: "node --test",
+          build: "tsc",
+          lint: "eslint .",
+          typecheck: "tsc --noEmit",
+          dev: "tsx src/index.ts",
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  const result = await runCli(["init", "--repo", repo, "--json"]);
+  const report = JSON.parse(result.stdout) as { status: string; commands: Record<string, string> };
+  const config = await readFile(join(repo, ".groveyard.yml"), "utf8");
+
+  assert.equal(report.status, "created");
+  assert.deepEqual(report.commands, {
+    test: "npm test",
+    build: "npm run build",
+    lint: "npm run lint",
+    typecheck: "npm run typecheck",
+  });
+  assert.match(config, /commands:\n  test: npm test\n  build: npm run build\n  lint: npm run lint\n  typecheck: npm run typecheck/);
+});
+
+test("CLI init refuses overwrite unless forced", async () => {
+  const repo = await createRepo();
+
+  await runCli(["init", "--repo", repo]);
+  const rejected = await runCli(["init", "--repo", repo], { reject: false });
+  assert.equal(rejected.exitCode, 1);
+  assert.match(rejected.stderr, /already exists/);
+
+  const forced = await runCli(["init", "--repo", repo, "--force", "--json"]);
+  const report = JSON.parse(forced.stdout) as { status: string };
+  assert.equal(report.status, "created");
+});
+
 test("CLI returns a nonzero exit for missing inspect session ID", async () => {
   const result = await runCli(["inspect"], { reject: false });
 
@@ -68,8 +115,16 @@ test("CLI returns a nonzero exit for missing inspect session ID", async () => {
   assert.match(result.stderr, /inspect requires a session ID/);
 });
 
+test("CLI init help does not create a config file", async () => {
+  const repo = await createRepo();
+  const result = await runCli(["init", "--repo", repo, "--help"]);
+
+  assert.match(result.stdout, /groveyard init/);
+  await assert.rejects(() => readFile(join(repo, ".groveyard.yml"), "utf8"), /ENOENT/);
+});
+
 async function createRepo(): Promise<string> {
-  const repo = await mkdtemp(join(tmpdir(), "worktree-mcp-cli-repo-"));
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-cli-repo-"));
 
   await git(repo, ["init", "-b", "main"]);
   await writeFile(join(repo, "README.md"), "# Test\n", "utf8");

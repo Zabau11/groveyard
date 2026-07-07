@@ -8,7 +8,7 @@ export async function startMcpServer(): Promise<void> {
   const sessionService = new WorktreeSessionService();
 
   const server = new McpServer({
-    name: "worktree-mcp",
+    name: "groveyard",
     version: "0.1.0",
   });
 
@@ -17,11 +17,11 @@ export async function startMcpServer(): Promise<void> {
 
   server.tool(
     "server_info",
-    "Return basic information and the recommended agent workflow for Worktree MCP.",
+    "Return basic information and the recommended agent workflow for Groveyard.",
     {},
     async () =>
       jsonResponse("server_info", {
-        name: "worktree-mcp",
+        name: "groveyard",
         version: "0.1.0",
         description: "Safe Git worktree sessions for coding agents.",
         status: "mvp",
@@ -138,11 +138,11 @@ export async function startMcpServer(): Promise<void> {
 
   server.tool(
     "run_command_profile",
-    "Run a named command profile from .worktree-mcp.yml inside a registered worktree session. This tool does not accept arbitrary shell commands.",
+    "Run a named command profile from .groveyard.yml inside a registered worktree session. This tool does not accept arbitrary shell commands.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       sessionId: z.string().min(1).describe(sessionIdDescription),
-      profile: z.string().min(1).describe("Command profile name from .worktree-mcp.yml, such as test, lint, or build."),
+      profile: z.string().min(1).describe("Command profile name from .groveyard.yml, such as test, lint, or build."),
     },
     async ({ repoPath, sessionId, profile }) =>
       jsonResponse("run_command_profile", await sessionService.runCommandProfile({ repoPath, sessionId, profile }), [

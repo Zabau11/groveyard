@@ -1,42 +1,45 @@
-# Worktree MCP
+# Groveyard
 
 Safe Git worktree sessions for coding agents.
 
 This package provides a local stdio MCP server that lets MCP-capable coding agents create isolated Git worktree sessions, inspect diffs, run approved commands, and clean up after a task.
 
-Full install and MCP client setup docs live in [../../docs/worktree-mcp-install.md](../../docs/worktree-mcp-install.md).
+Full install and MCP client setup docs live in [../../docs/groveyard-install.md](../../docs/groveyard-install.md).
 
 ## Development
 
 ```bash
 npm install
-npm run dev:worktree-mcp
-npm run build:worktree-mcp
+npm run dev:groveyard
+npm run build:groveyard
 ```
 
 Smoke test:
 
 ```bash
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js doctor --repo .
-node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js sessions --repo .
+node packages/worktree-mcp/dist/index.js doctor --repo .
+node packages/worktree-mcp/dist/index.js sessions --repo .
 ```
 
 ## CLI
 
-Running `worktree-mcp` without a subcommand starts the stdio MCP server. Human debugging commands are also available:
+Running `groveyard` without a subcommand starts the stdio MCP server. Human debugging commands are also available:
 
 ```bash
-worktree-mcp doctor
-worktree-mcp sessions
-worktree-mcp inspect <sessionId>
-worktree-mcp clean <sessionId>
+groveyard init
+groveyard doctor
+groveyard sessions
+groveyard inspect <sessionId>
+groveyard clean <sessionId>
 ```
 
 Each command accepts `--repo <path>` and `--json`.
 
 ## Configuration
 
-Repositories can define `.worktree-mcp.yml`:
+Run `groveyard init` to create `.groveyard.yml` automatically. It detects common npm scripts and turns them into safe command profiles.
+
+Repositories can also define `.groveyard.yml` manually:
 
 ```yaml
 worktreesRoot: .agent-worktrees
@@ -48,7 +51,7 @@ commands:
   build: npm run build
 ```
 
-If no config exists, Worktree MCP uses the conservative defaults above with no command profiles enabled.
+If no config exists, Groveyard uses the conservative defaults above with no command profiles enabled.
 
 ## Current Status
 
@@ -77,7 +80,7 @@ Tool responses use a consistent JSON envelope:
 }
 ```
 
-Command profiles are loaded from `.worktree-mcp.yml` and run without shell evaluation:
+Command profiles are loaded from `.groveyard.yml` and run without shell evaluation:
 
 ```yaml
 commands:
