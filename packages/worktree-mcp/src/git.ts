@@ -62,7 +62,28 @@ export async function gitStatusShort(worktreePath: string): Promise<string> {
 }
 
 export async function gitDiff(worktreePath: string): Promise<string> {
-  return runGit(worktreePath, ["diff", "--binary", "HEAD"]);
+  const trackedDiff = await runGit(worktreePath, ["diff", "--binary", "HEAD"]);
+  const untrackedFiles = await gitUntrackedFiles(worktreePath);
+  const untrackedDiffs = await Promise.all(untrackedFiles.map((filePath) => gitDiffUntrackedFile(worktreePath, filePath)));
+
+  return [trackedDiff, ...untrackedDiffs].filter(Boolean).join("\n");
+}
+
+async function gitUntrackedFiles(worktreePath: string): Promise<string[]> {
+  const stdout = await runGit(worktreePath, ["ls-files", "--others", "--exclude-standard"]);
+  return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+async function gitDiffUntrackedFile(worktreePath: string, filePath: string): Promise<string> {
+  try {
+    return await runGit(worktreePath, ["diff", "--no-index", "--binary", "--", "/dev/null", filePath]);
+  } catch (error) {
+    if (error instanceof GitCommandError && error.output) {
+      return error.output;
+    }
+
+    throw error;
+  }
 }
 
 function isExecError(error: unknown): error is Error & { stdout?: string; stderr?: string } {

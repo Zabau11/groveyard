@@ -2,7 +2,9 @@
 
 Safe Git worktree sessions for coding agents.
 
-This package will provide a local stdio MCP server that lets MCP-capable coding agents create isolated Git worktree sessions, inspect diffs, run approved commands, and clean up after a task.
+This package provides a local stdio MCP server that lets MCP-capable coding agents create isolated Git worktree sessions, inspect diffs, run approved commands, and clean up after a task.
+
+Full install and MCP client setup docs live in [../../docs/worktree-mcp-install.md](../../docs/worktree-mcp-install.md).
 
 ## Development
 
@@ -10,6 +12,13 @@ This package will provide a local stdio MCP server that lets MCP-capable coding 
 npm install
 npm run dev:worktree-mcp
 npm run build:worktree-mcp
+```
+
+Smoke test:
+
+```bash
+node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js doctor --repo .
+node /Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js sessions --repo .
 ```
 
 ## CLI

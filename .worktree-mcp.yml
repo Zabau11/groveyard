@@ -1,0 +1,4 @@
+allowDirtyBase: true
+commands:
+  test: npm run test:worktree-mcp
+  build: npm run build
