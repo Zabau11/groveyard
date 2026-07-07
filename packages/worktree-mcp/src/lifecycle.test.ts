@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -61,6 +61,29 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
 
   const files = await service.listFiles({ repoPath: repo, sessionId: created.id, path: "." });
   assert.deepEqual(files.files, ["README.md", "changed.txt", "src/new-file.txt"]);
+
+  await writeFile(
+    join(repo, ".worktree-mcp.yml"),
+    `commands:
+  echo: node scripts/echo.mjs
+  fail: node scripts/fail.mjs
+`,
+    "utf8",
+  );
+  await mkdir(join(created.worktreePath, "scripts"), { recursive: true });
+  await writeFile(join(created.worktreePath, "scripts/echo.mjs"), "console.log('hello from profile');\n", "utf8");
+  await writeFile(join(created.worktreePath, "scripts/fail.mjs"), "process.exit(7);\n", "utf8");
+  const command = await service.runCommandProfile({ repoPath: repo, sessionId: created.id, profile: "echo" });
+  assert.equal(command.result.exitCode, 0);
+  assert.equal(command.result.stdout.trim(), "hello from profile");
+
+  const failedCommand = await service.runCommandProfile({ repoPath: repo, sessionId: created.id, profile: "fail" });
+  assert.equal(failedCommand.result.exitCode, 7);
+
+  await assert.rejects(
+    () => service.runCommandProfile({ repoPath: repo, sessionId: created.id, profile: "missing" }),
+    /Unknown command profile/,
+  );
 
   const status = await service.gitStatus({ repoPath: repo, sessionId: created.id });
   assert.match(status.status, /\?\? changed\.txt/);

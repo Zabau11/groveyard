@@ -26,5 +26,13 @@ The package has a minimal MCP server entrypoint and the first worktree lifecycle
 - `read_file`
 - `write_file`
 - `list_files`
+- `run_command_profile`
 
-Command profiles are the next implementation step.
+Command profiles are loaded from `.worktree-mcp.yml` and run without shell evaluation:
+
+```yaml
+commands:
+  test: npm test
+  lint: npm run lint
+  build: npm run build
+```

@@ -130,6 +130,17 @@ server.tool(
   async ({ repoPath, sessionId, path }) => jsonResponse(await sessionService.listFiles({ repoPath, sessionId, path })),
 );
 
+server.tool(
+  "run_command_profile",
+  "Run a named command profile from .worktree-mcp.yml inside a registered worktree session. This does not accept arbitrary shell commands.",
+  {
+    repoPath: z.string().optional().describe("Path inside the Git repository. Defaults to the MCP server working directory."),
+    sessionId: z.string().min(1).describe("Session ID returned by create_session."),
+    profile: z.string().min(1).describe("Command profile name from .worktree-mcp.yml, such as test, lint, or build."),
+  },
+  async ({ repoPath, sessionId, profile }) => jsonResponse(await sessionService.runCommandProfile({ repoPath, sessionId, profile })),
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 

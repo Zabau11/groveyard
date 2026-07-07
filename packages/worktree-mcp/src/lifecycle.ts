@@ -14,6 +14,12 @@ import {
 import { JsonSessionStore } from "./session-store.js";
 import type { SessionRecord } from "./sessions.js";
 import { resolveExistingSessionPath, resolveWritableSessionPath, toSessionRelativePath } from "./path-safety.js";
+import { loadConfig } from "./config.js";
+import {
+  type CommandRunResult,
+  UnknownCommandProfileError,
+  runCommandProfile as executeCommandProfile,
+} from "./command-runner.js";
 
 const metadataDirectory = ".worktree-mcp";
 const defaultWorktreesRoot = ".agent-worktrees";
@@ -36,6 +42,10 @@ export type SessionFileInput = SessionLookupInput & {
 
 export type SessionWriteFileInput = SessionFileInput & {
   content: string;
+};
+
+export type RunCommandProfileInput = SessionLookupInput & {
+  profile: string;
 };
 
 export class WorktreeSessionService {
@@ -143,6 +153,22 @@ export class WorktreeSessionService {
       session,
       path: toSessionRelativePath(session.worktreePath, target) || ".",
       files,
+    };
+  }
+
+  async runCommandProfile(input: RunCommandProfileInput): Promise<{ session: SessionRecord; result: CommandRunResult }> {
+    const repoRoot = await this.resolveRepo(input.repoPath);
+    const session = await this.storeForRepo(repoRoot).get(input.sessionId);
+    const config = await loadConfig(repoRoot);
+    const command = config.commands[input.profile];
+
+    if (!command) {
+      throw new UnknownCommandProfileError(input.profile);
+    }
+
+    return {
+      session,
+      result: await executeCommandProfile(session.worktreePath, input.profile, command),
     };
   }
 
