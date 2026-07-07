@@ -38,7 +38,7 @@ Each command accepts `--repo <path>` and `--json`.
 
 ## Configuration
 
-Run `groveyard init` to create `.groveyard.yml` automatically. It detects common npm scripts and turns them into safe command profiles.
+Run `groveyard init` to create `.groveyard.yml` automatically. It detects common npm scripts and turns them into safe command profiles. In an interactive terminal, `init` and `doctor` use small spinners and colored output; in CI or JSON mode, they stay plain.
 
 Repositories can also define `.groveyard.yml` manually:
 

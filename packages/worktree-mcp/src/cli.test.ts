@@ -36,6 +36,17 @@ commands:
   assert.equal(report.config.allowDirtyBase, true);
 });
 
+test("CLI doctor prints a readable non-JSON report", async () => {
+  const repo = await createRepo();
+  const { stdout } = await runCli(["doctor", "--repo", repo]);
+
+  assert.match(stdout, /____/);
+  assert.match(stdout, /Doctor/);
+  assert.match(stdout, /Ready for agent worktrees/);
+  assert.match(stdout, /Command profiles: none/);
+  assert.match(stdout, /groveyard init/);
+});
+
 test("CLI sessions, inspect, and clean operate on persisted sessions", async () => {
   const repo = await createRepo();
   const service = new WorktreeSessionService();

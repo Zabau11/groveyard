@@ -104,15 +104,22 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 async function init(args: ParsedArgs): Promise<void> {
-  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  if (!args.json) {
+    printLogo();
+    console.log(style("Init", "bold"));
+    console.log(style("Preparing a safe workspace config for coding agents.", "dim"));
+    console.log("");
+  }
+
+  const repoRoot = await withSpinner("Finding Git repository", () => resolveRepoRoot(resolve(args.repoPath ?? process.cwd())), args.json);
   const configPath = join(repoRoot, ".groveyard.yml");
 
   if (existsSync(configPath) && !args.force) {
     throw new Error(".groveyard.yml already exists. Use --force to overwrite it.");
   }
 
-  const commands = await detectCommandProfiles(repoRoot);
-  await writeFile(configPath, renderConfig(commands), "utf8");
+  const commands = await withSpinner("Detecting package scripts", () => detectCommandProfiles(repoRoot), args.json);
+  await withSpinner("Writing .groveyard.yml", () => writeFile(configPath, renderConfig(commands), "utf8"), args.json);
 
   const report = {
     status: "created",
@@ -126,27 +133,35 @@ async function init(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  console.log("Created .groveyard.yml");
+  console.log(style("Created .groveyard.yml", "green"));
   console.log("");
-  console.log("Worktrees: .agent-worktrees");
-  console.log("Branch prefix: agent/");
-  console.log("Dirty base: rejected");
-  console.log(`Command profiles: ${Object.keys(commands).length ? Object.keys(commands).join(", ") : "none"}`);
+  console.log(`${style("Worktrees", "cyan")}: .agent-worktrees`);
+  console.log(`${style("Branch prefix", "cyan")}: agent/`);
+  console.log(`${style("Dirty base", "cyan")}: rejected`);
+  console.log(`${style("Command profiles", "cyan")}: ${formatCommandProfiles(commands)}`);
   console.log("");
-  console.log("Next:");
-  console.log("  groveyard doctor");
+  console.log(style("Next", "bold"));
+  console.log(`  ${style("groveyard doctor", "green")}`);
 }
 
 async function doctor(args: ParsedArgs): Promise<void> {
-  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
-  const config = await loadConfig(repoRoot);
+  if (!args.json) {
+    printLogo();
+    console.log(style("Doctor", "bold"));
+    console.log(style("Checking whether this repo is ready for agent worktrees.", "dim"));
+    console.log("");
+  }
+
+  const repoRoot = await withSpinner("Inspecting Git repository", () => resolveRepoRoot(resolve(args.repoPath ?? process.cwd())), args.json);
+  const config = await withSpinner("Reading Groveyard config", () => loadConfig(repoRoot), args.json);
   const configPath = resolve(repoRoot, ".groveyard.yml");
+  const configExists = existsSync(configPath);
 
   const report = {
     status: "ok",
     repoRoot,
     configPath,
-    configExists: existsSync(configPath),
+    configExists,
     config,
   };
 
@@ -155,13 +170,17 @@ async function doctor(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  console.log("Groveyard doctor: ok");
-  console.log(`Repo: ${repoRoot}`);
-  console.log(`Config: ${report.configExists ? configPath : "defaults"}`);
-  console.log(`Worktrees: ${config.worktreesRoot}`);
-  console.log(`Branch prefix: ${config.branchPrefix}`);
-  console.log(`Dirty base: ${config.allowDirtyBase ? "allowed" : "rejected"}`);
-  console.log(`Command profiles: ${Object.keys(config.commands).length ? Object.keys(config.commands).join(", ") : "none"}`);
+  console.log(style("Ready for agent worktrees", "green"));
+  console.log("");
+  console.log(`${style("Repo", "cyan")}: ${repoRoot}`);
+  console.log(`${style("Config", "cyan")}: ${configExists ? configPath : style("defaults", "dim")}`);
+  console.log(`${style("Worktrees", "cyan")}: ${config.worktreesRoot}`);
+  console.log(`${style("Branch prefix", "cyan")}: ${config.branchPrefix}`);
+  console.log(`${style("Dirty base", "cyan")}: ${config.allowDirtyBase ? style("allowed", "yellow") : style("rejected", "green")}`);
+  console.log(`${style("Command profiles", "cyan")}: ${formatCommandProfiles(config.commands)}`);
+  console.log("");
+  console.log(style("Next", "bold"));
+  console.log(`  ${Object.keys(config.commands).length ? style("groveyard sessions", "green") : style("groveyard init", "green")}`);
 }
 
 async function sessions(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
@@ -276,6 +295,71 @@ Options:
   --json        Print JSON output for CLI commands
   --force       Overwrite files for commands that support it
 `);
+}
+
+function printLogo(): void {
+  const logo = [
+    "  ____                                      __",
+    " / ___|_ __ _____   _____ _   _  __ _ _ __ __| |",
+    "| |  _| '__/ _ \\ \\ / / _ \\ | | |/ _` | '__/ _` |",
+    "| |_| | | | (_) \\ V /  __/ |_| | (_| | | | (_| |",
+    " \\____|_|  \\___/ \\_/ \\___|\\__, |\\__,_|_|  \\__,_|",
+    "                          |___/",
+  ];
+
+  for (const line of logo) {
+    console.log(style(line, "cyan"));
+  }
+}
+
+async function withSpinner<T>(label: string, task: () => Promise<T>, silent: boolean): Promise<T> {
+  if (silent || !isInteractive()) {
+    return task();
+  }
+
+  const frames = ["-", "\\", "|", "/"];
+  let index = 0;
+  const timer = setInterval(() => {
+    process.stdout.write(`\r\x1b[2K${style(frames[index % frames.length]!, "cyan")} ${label}`);
+    index += 1;
+  }, 80);
+
+  try {
+    const result = await task();
+    clearInterval(timer);
+    process.stdout.write(`\r\x1b[2K${style("ok", "green")} ${label}\n`);
+    return result;
+  } catch (error) {
+    clearInterval(timer);
+    process.stdout.write(`\r\x1b[2K${style("fail", "yellow")} ${label}\n`);
+    throw error;
+  }
+}
+
+function formatCommandProfiles(commands: Record<string, string>): string {
+  const names = Object.keys(commands);
+  return names.length ? names.map((name) => style(name, "green")).join(", ") : style("none", "dim");
+}
+
+function isInteractive(): boolean {
+  return Boolean(process.stdout.isTTY && !process.env.CI);
+}
+
+function style(value: string, color: "bold" | "dim" | "green" | "cyan" | "yellow"): string {
+  if (!process.stdout.isTTY || process.env.NO_COLOR) {
+    return value;
+  }
+
+  const codes = {
+    bold: ["\x1b[1m", "\x1b[22m"],
+    dim: ["\x1b[2m", "\x1b[22m"],
+    green: ["\x1b[32m", "\x1b[39m"],
+    cyan: ["\x1b[36m", "\x1b[39m"],
+    yellow: ["\x1b[33m", "\x1b[39m"],
+  } satisfies Record<typeof color, [string, string]>;
+
+  const [open, close] = codes[color];
+  return `${open}${value}${close}`;
 }
 
 function readOptionValue(values: string[], name: string): string | undefined {
