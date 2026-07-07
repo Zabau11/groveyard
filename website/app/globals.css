@@ -11,9 +11,10 @@
   --yellow: #f4d35e;
   --graphite: #696e67;
   --shadow: rgba(0, 0, 0, 0.45);
-  font-family:
-    ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+  --font-sans: Inter, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Avenir Next", "SF Pro Display", Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SFMono-Regular", "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-sans);
   background: var(--ink);
   color: var(--paper);
 }
@@ -72,7 +73,7 @@ a {
   display: block;
   margin: 0;
   color: var(--green);
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-weight: 800;
   letter-spacing: 0;
   white-space: pre;
@@ -92,6 +93,7 @@ a {
   gap: 20px;
   color: var(--muted);
   font-size: 14px;
+  font-weight: 700;
 }
 
 .site-nav a {
@@ -111,8 +113,8 @@ main {
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
   align-items: center;
-  gap: 48px;
-  padding: 72px 32px 52px;
+  gap: 44px;
+  padding: 54px 32px 48px;
   max-width: 1220px;
   margin: 0 auto;
 }
@@ -124,7 +126,10 @@ main {
 .eyebrow {
   margin: 0 0 16px;
   color: var(--green);
+  font-family: var(--font-mono);
   font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -137,15 +142,28 @@ p {
 
 h1 {
   margin-bottom: 20px;
-  font-size: 72px;
-  line-height: 0.96;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: clamp(58px, 7vw, 96px);
+  line-height: 0.9;
+  font-weight: 900;
+}
+
+h1 span {
+  display: block;
+  max-width: 620px;
+  margin-top: 12px;
+  color: var(--paper);
+  font-size: clamp(34px, 4vw, 56px);
+  line-height: 0.95;
+  text-wrap: balance;
 }
 
 h2 {
   margin-bottom: 18px;
+  font-family: var(--font-display);
   font-size: 42px;
   line-height: 1.05;
+  font-weight: 850;
 }
 
 h3 {
@@ -163,8 +181,11 @@ h3 {
 
 .hero-lede {
   max-width: 560px;
-  margin-bottom: 28px;
-  font-size: 18px;
+  margin-bottom: 30px;
+  color: #c5ccc1;
+  font-size: 20px;
+  line-height: 1.55;
+  text-wrap: pretty;
 }
 
 .command-strip {
@@ -183,7 +204,7 @@ h3 {
 
 code {
   color: var(--paper);
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-size: 14px;
   overflow-wrap: anywhere;
 }
@@ -197,8 +218,9 @@ code {
   justify-content: center;
   border: 1px solid var(--line);
   border-radius: 4px;
-  font-family: inherit;
+  font-family: var(--font-sans);
   font-size: 14px;
+  font-weight: 800;
   text-decoration: none;
   cursor: pointer;
 }
@@ -235,6 +257,7 @@ code {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+  font-family: var(--font-mono);
   box-shadow: 0 24px 80px var(--shadow);
   overflow: hidden;
 }
@@ -345,7 +368,9 @@ code {
 
 .signal-band strong {
   color: var(--paper);
+  font-family: var(--font-display);
   font-size: 30px;
+  font-weight: 850;
 }
 
 .signal-band span {
@@ -389,7 +414,10 @@ code {
   display: block;
   margin-bottom: 16px;
   color: var(--green);
+  font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -465,7 +493,7 @@ pattern path {
 
 .node text {
   fill: var(--muted);
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-size: 15px;
 }
 
@@ -574,6 +602,10 @@ pattern path {
     font-size: 58px;
   }
 
+  h1 span {
+    font-size: 38px;
+  }
+
   h2 {
     font-size: 34px;
   }
@@ -623,7 +655,14 @@ pattern path {
 
   h1 {
     margin-bottom: 14px;
-    font-size: 38px;
+    font-size: 42px;
+    line-height: 0.94;
+  }
+
+  h1 span {
+    margin-top: 10px;
+    font-size: 29px;
+    line-height: 1;
   }
 
   h2 {

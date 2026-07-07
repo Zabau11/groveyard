@@ -64,18 +64,22 @@ export default function Home() {
       <main id="top">
         <section className="hero-section">
           <div className="hero-copy">
-            <p className="eyebrow">MCP server for coding agents</p>
-            <h1>Groveyard</h1>
+            <p className="eyebrow">MCP worktrees for coding agents</p>
+            <h1>
+              Groveyard
+              {" "}
+              <span>Clean branches for ambitious agents.</span>
+            </h1>
             <p className="hero-lede">
-              Give agents their own Git worktree, approved commands, readable diffs, and a clean exit path. No shared working tree chaos.
+              Spin up isolated workspaces where agents can explore, edit, test, diff, and commit without trampling your main checkout.
             </p>
             <CommandStrip />
             <div className="hero-actions">
               <a className="primary-link" href="#setup">
-                Connect an agent
+                Start a session
               </a>
               <a className="secondary-link" href="#advantages">
-                Why it helps
+                See why it works
               </a>
             </div>
           </div>
