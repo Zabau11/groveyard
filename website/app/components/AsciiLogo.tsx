@@ -8,9 +8,10 @@ const groveyardAscii = `  ____                                      __
 type AsciiLogoProps = {
   className?: string;
   decorative?: boolean;
+  glitch?: boolean;
 };
 
-export function AsciiLogo({ className = "", decorative = false }: AsciiLogoProps) {
+export function AsciiLogo({ className = "", decorative = false, glitch = false }: AsciiLogoProps) {
   return (
     <pre
       aria-hidden={decorative ? "true" : undefined}
@@ -18,7 +19,17 @@ export function AsciiLogo({ className = "", decorative = false }: AsciiLogoProps
       className={`ascii-logo ${className}`.trim()}
       role={decorative ? undefined : "img"}
     >
-      {groveyardAscii}
+      <span className="ascii-logo-text">{groveyardAscii}</span>
+      {glitch ? (
+        <>
+          <span aria-hidden="true" className="ascii-logo-glitch ascii-logo-glitch-soft">
+            {groveyardAscii}
+          </span>
+          <span aria-hidden="true" className="ascii-logo-glitch">
+            {groveyardAscii}
+          </span>
+        </>
+      ) : null}
     </pre>
   );
 }

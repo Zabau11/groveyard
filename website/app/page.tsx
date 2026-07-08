@@ -199,7 +199,7 @@ export default function Home() {
           <span>Groveyard</span>
           <span>Safe Git worktree sessions for coding agents.</span>
         </div>
-        <AsciiLogo className="footer-logo" />
+        <AsciiLogo className="footer-logo" glitch />
       </footer>
     </>
   );

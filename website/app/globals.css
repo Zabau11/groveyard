@@ -100,6 +100,7 @@ a {
 }
 
 .ascii-logo {
+  position: relative;
   display: block;
   margin: 0;
   color: var(--green);
@@ -108,6 +109,14 @@ a {
   letter-spacing: 0;
   white-space: pre;
   overflow-wrap: normal;
+}
+
+.ascii-logo-text {
+  display: block;
+}
+
+.ascii-logo-glitch {
+  display: none;
 }
 
 .brand-logo {
@@ -595,7 +604,7 @@ pattern path {
 }
 
 .site-footer {
-  padding: 32px 32px 0;
+  padding: 32px 32px 30px;
   border-top: 1px solid var(--line);
   overflow: hidden;
 }
@@ -609,16 +618,123 @@ pattern path {
 }
 
 .footer-logo {
+  position: relative;
   width: max-content;
   max-width: none;
-  margin: 44px auto -24px;
-  color: var(--paper);
+  margin: 44px auto 0;
+  color: #91ffb8;
   font-size: clamp(13px, 3.1vw, 40px);
   line-height: 1.05;
   text-shadow:
-    0.08em 0.06em 0 rgba(76, 255, 146, 0.24),
-    -0.04em -0.02em 0 rgba(76, 255, 146, 0.14),
+    0.045em 0.035em 0 rgba(243, 245, 241, 0.16),
+    -0.03em -0.015em 0 rgba(200, 255, 218, 0.14),
     0 18px 36px rgba(76, 255, 146, 0.12);
+}
+
+.footer-logo .ascii-logo-text {
+  background: linear-gradient(
+    180deg,
+    var(--green) 0%,
+    #72ffa8 48%,
+    #c8ffda 72%,
+    var(--paper) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.footer-logo .ascii-logo-glitch {
+  position: absolute;
+  inset: 0;
+  display: block;
+  color: var(--paper);
+  clip-path: polygon(0 70%, 100% 64%, 100% 100%, 0 100%);
+  opacity: 0.86;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.18) 58%, #000 88%);
+  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.18) 58%, #000 88%);
+  pointer-events: none;
+  text-shadow:
+    0.07em 0 0 rgba(76, 255, 146, 0.42),
+    -0.045em 0 0 rgba(255, 94, 87, 0.34);
+  transform: translate(0.075em, 0.025em);
+  animation: footer-logo-glitch 2.6s steps(1, end) infinite;
+}
+
+.footer-logo .ascii-logo-glitch-soft {
+  color: #c8ffda;
+  clip-path: polygon(0 55%, 100% 50%, 100% 88%, 0 94%);
+  opacity: 0.56;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 52%, rgba(0, 0, 0, 0.68) 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 52%, rgba(0, 0, 0, 0.68) 100%);
+  text-shadow:
+    0.055em 0.02em 0 rgba(243, 245, 241, 0.26),
+    -0.04em 0 0 rgba(76, 255, 146, 0.32);
+  transform: translate(0.04em, 0.015em);
+  animation: footer-logo-glitch-soft 3.1s steps(1, end) infinite;
+}
+
+@keyframes footer-logo-glitch {
+  0%,
+  70%,
+  100% {
+    clip-path: polygon(0 70%, 100% 64%, 100% 100%, 0 100%);
+    transform: translate(0.075em, 0.025em);
+  }
+
+  72% {
+    clip-path: polygon(0 32%, 100% 26%, 100% 43%, 0 48%);
+    transform: translate(-0.12em, -0.01em);
+  }
+
+  74% {
+    clip-path: polygon(0 78%, 100% 72%, 100% 100%, 0 100%);
+    transform: translate(0.14em, 0.04em);
+  }
+
+  76% {
+    clip-path: polygon(0 58%, 100% 62%, 100% 72%, 0 68%);
+    transform: translate(-0.08em, 0.005em);
+  }
+
+  78% {
+    clip-path: polygon(0 64%, 100% 68%, 100% 100%, 0 100%);
+    transform: translate(0.16em, 0.015em);
+  }
+
+  80% {
+    clip-path: polygon(0 74%, 100% 66%, 100% 100%, 0 100%);
+    transform: translate(-0.07em, 0.035em);
+  }
+}
+
+@keyframes footer-logo-glitch-soft {
+  0%,
+  62%,
+  100% {
+    clip-path: polygon(0 55%, 100% 50%, 100% 88%, 0 94%);
+    transform: translate(0.04em, 0.015em);
+  }
+
+  64% {
+    clip-path: polygon(0 18%, 100% 24%, 100% 40%, 0 34%);
+    transform: translate(0.11em, -0.015em);
+  }
+
+  66% {
+    clip-path: polygon(0 58%, 100% 54%, 100% 90%, 0 96%);
+    transform: translate(-0.09em, 0.02em);
+  }
+
+  68% {
+    clip-path: polygon(0 52%, 100% 56%, 100% 86%, 0 92%);
+    transform: translate(0.12em, 0.005em);
+  }
+
+  70% {
+    clip-path: polygon(0 44%, 100% 40%, 100% 62%, 0 66%);
+    transform: translate(-0.06em, 0.01em);
+  }
 }
 
 @keyframes blink {
@@ -859,7 +975,7 @@ pattern path {
   }
 
   .site-footer {
-    padding: 24px 18px 0;
+    padding: 24px 18px 18px;
   }
 
   .footer-meta {
@@ -867,7 +983,7 @@ pattern path {
   }
 
   .footer-logo {
-    margin: 28px 0 -10px -2px;
+    margin: 28px 0 0 -2px;
     font-size: 12px;
   }
 }
