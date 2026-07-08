@@ -3,17 +3,110 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { WorktreeSessionService } from "./lifecycle.js";
+import type { SessionRecord } from "./sessions.js";
+
+export const mcpServerVersion = "0.1.9";
+export const instructionsResourceUri = "groveyard://instructions";
+export const workflowPromptName = "groveyard_session_workflow";
+
+export const agentContract = [
+  "Work only inside the worktreePath returned by create_session. Treat the user's base checkout as read-only context.",
+  "Use the sessionId returned by create_session for every session-scoped Groveyard tool call.",
+  "Read files or list directories before writing. Do not guess file contents.",
+  "Write only paths relative to the session worktree. Absolute paths and path escapes are rejected.",
+  "Run configured command profiles with run_command_profile when validation is needed. Groveyard command profiles are the approved command surface.",
+  "Before reporting completion, call git_status and git_diff for the session and summarize the changed files.",
+  "Commit only when the user asks you to commit. Clean up only when the user says the session is no longer needed.",
+];
+
+export const recommendedWorkflow = [
+  "create_session",
+  "list_files or read_file",
+  "write_file",
+  "run_command_profile when a relevant profile exists",
+  "git_status",
+  "git_diff",
+  "commit_session only on request",
+  "cleanup_session only on request",
+];
+
+export const completionChecklist = [
+  "All edits stayed inside the session worktree.",
+  "Relevant command profiles were run or skipped with a clear reason.",
+  "git_status was checked.",
+  "git_diff was checked.",
+  "The final response names the sessionId, branch, changed files, and validation result.",
+];
+
+export function renderAgentInstructions(taskName = "the user's task"): string {
+  return [
+    "# Groveyard Agent Instructions",
+    "",
+    `Use Groveyard to isolate ${taskName} in a registered Git worktree session.`,
+    "",
+    "## Contract",
+    ...agentContract.map((line) => `- ${line}`),
+    "",
+    "## Recommended Workflow",
+    ...recommendedWorkflow.map((step, index) => `${index + 1}. ${step}`),
+    "",
+    "## Completion Checklist",
+    ...completionChecklist.map((line) => `- ${line}`),
+  ].join("\n");
+}
 
 export async function startMcpServer(): Promise<void> {
   const sessionService = new WorktreeSessionService();
 
   const server = new McpServer({
     name: "groveyard",
-    version: "0.1.0",
+    version: mcpServerVersion,
   });
 
   const repoPathDescription = "Path inside the Git repository to manage. Defaults to GROVEYARD_REPO, then the MCP server working directory.";
   const sessionIdDescription = "Session ID returned by create_session. All operations are scoped to this registered worktree session.";
+
+  server.registerResource(
+    "groveyard_instructions",
+    instructionsResourceUri,
+    {
+      title: "Groveyard Agent Instructions",
+      description: "The safe worktree workflow coding agents should follow when using Groveyard.",
+      mimeType: "text/markdown",
+    },
+    (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/markdown",
+          text: renderAgentInstructions(),
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    workflowPromptName,
+    {
+      title: "Groveyard Session Workflow",
+      description: "Start a coding task in an isolated Groveyard worktree and finish with status and diff review.",
+      argsSchema: {
+        taskName: z.string().optional().describe("Short description of the coding task."),
+      },
+    },
+    ({ taskName }) => ({
+      description: "Instructions for a coding agent using Groveyard.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: renderAgentInstructions(taskName),
+          },
+        },
+      ],
+    }),
+  );
 
   server.tool(
     "server_info",
@@ -22,27 +115,34 @@ export async function startMcpServer(): Promise<void> {
     async () =>
       jsonResponse("server_info", {
         name: "groveyard",
-        version: "0.1.0",
+        version: mcpServerVersion,
         description: "Safe Git worktree sessions for coding agents.",
         status: "mvp",
-        workflow: ["create_session", "read_file/list_files", "write_file", "run_command_profile", "git_status", "git_diff", "commit_session"],
+        instructionsResourceUri,
+        workflowPromptName,
+        workflow: recommendedWorkflow,
+        agentContract,
+        completionChecklist,
       }),
   );
 
   server.tool(
     "create_session",
-    "Create an isolated Git worktree session for a coding task. Call this before reading, writing, running commands, or reporting code changes.",
+    "Create an isolated Git worktree session for a coding task. Call this before reading, writing, running commands, or reporting code changes. Use the returned worktreePath as the only writable workspace for the task.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       taskName: z.string().min(1).describe("Short human-readable task name for the session."),
       baseBranch: z.string().min(1).optional().describe("Branch or ref to base the session on. Defaults to the current branch."),
     },
-    async ({ repoPath, taskName, baseBranch }) =>
-      jsonResponse("create_session", await sessionService.createSession({ repoPath, taskName, baseBranch }), [
-        "Use this sessionId for all file, command, status, diff, and cleanup tools.",
-        "Read or list files before editing.",
-        "Call git_status and git_diff before reporting completion.",
-      ]),
+    async ({ repoPath, taskName, baseBranch }) => {
+      const session = await sessionService.createSession({ repoPath, taskName, baseBranch });
+      return jsonResponse("create_session", session, createSessionNextSteps(session), {
+        agentContract,
+        completionChecklist,
+        instructionsResourceUri,
+        workflowPromptName,
+      });
+    },
   );
 
   server.tool(
@@ -111,7 +211,7 @@ export async function startMcpServer(): Promise<void> {
 
   server.tool(
     "write_file",
-    "Write a UTF-8 text file inside a registered worktree session. Read existing files first when modifying code.",
+    "Write a UTF-8 text file inside a registered worktree session. Read existing files first when modifying code. Never write outside the session worktree.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       sessionId: z.string().min(1).describe(sessionIdDescription),
@@ -153,7 +253,7 @@ export async function startMcpServer(): Promise<void> {
 
   server.tool(
     "commit_session",
-    "Stage all changes in a registered worktree session and create a Git commit on the session branch.",
+    "Stage all changes in a registered worktree session and create a Git commit on the session branch. Use this only when the user asks for a commit.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       sessionId: z.string().min(1).describe(sessionIdDescription),
@@ -170,7 +270,26 @@ export async function startMcpServer(): Promise<void> {
   await server.connect(transport);
 }
 
-function jsonResponse(tool: string, data: unknown, nextSteps: string[] = []) {
+export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "branch" | "worktreePath">): string[] {
+  return [
+    `Use sessionId ${session.id} for every Groveyard tool call in this task.`,
+    `Work only inside ${session.worktreePath}.`,
+    `Keep changes on branch ${session.branch}.`,
+    "Start by listing or reading the files relevant to the task.",
+    "After edits, run a relevant command profile if one exists.",
+    "Before your final answer, call git_status and git_diff for this session.",
+    "Do not commit or clean up this session unless the user explicitly asks.",
+  ];
+}
+
+type ResponseGuidance = {
+  agentContract?: string[];
+  completionChecklist?: string[];
+  instructionsResourceUri?: string;
+  workflowPromptName?: string;
+};
+
+function jsonResponse(tool: string, data: unknown, nextSteps: string[] = [], guidance: ResponseGuidance = {}) {
   return {
     content: [
       {
@@ -180,6 +299,7 @@ function jsonResponse(tool: string, data: unknown, nextSteps: string[] = []) {
             ok: true,
             tool,
             data,
+            guidance,
             nextSteps,
           },
           null,

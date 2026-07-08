@@ -80,9 +80,17 @@ Tool responses use a consistent JSON envelope:
   "ok": true,
   "tool": "git_status",
   "data": {},
+  "guidance": {},
   "nextSteps": []
 }
 ```
+
+`server_info` returns the recommended agent workflow, the Groveyard agent contract, and a completion checklist. `create_session` also returns session-specific next steps so coding agents know to work only inside the returned `worktreePath`, use the returned `sessionId`, inspect `git_status` and `git_diff`, and avoid committing or cleaning up unless the user asks.
+
+MCP clients can also discover the same playbook through:
+
+- Resource: `groveyard://instructions`
+- Prompt: `groveyard_session_workflow`
 
 Command profiles are loaded from `.groveyard.yml` and run without shell evaluation:
 
