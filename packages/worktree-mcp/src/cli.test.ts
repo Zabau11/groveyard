@@ -96,6 +96,85 @@ test("CLI connect can write detected config files", async () => {
   assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_REPO, repo);
 });
 
+test("CLI dashboard summarizes repo, MCP config, and sessions", async () => {
+  const repo = await createRepo();
+  await writeFile(join(repo, ".gitignore"), ".agent-worktrees/\n.groveyard/\n", "utf8");
+  await writeFile(
+    join(repo, ".groveyard.yml"),
+    `worktreesRoot: .agent-worktrees
+branchPrefix: agent/
+allowDirtyBase: false
+commands:
+  build: npm run build
+`,
+    "utf8",
+  );
+  await git(repo, ["add", ".gitignore", ".groveyard.yml"]);
+  await git(repo, ["-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Configure Groveyard"]);
+
+  const home = await mkdtemp(join(tmpdir(), "groveyard-home-"));
+  await mkdir(join(home, ".codex"), { recursive: true });
+  await writeFile(
+    join(home, ".codex", "config.toml"),
+    `[mcp_servers.groveyard]
+command = "npx"
+args = ["-y", "@groveyard/mcp"]
+
+[mcp_servers.groveyard.env]
+GROVEYARD_REPO = ${JSON.stringify(repo)}
+`,
+    "utf8",
+  );
+
+  const service = new WorktreeSessionService();
+  const session = await service.createSession({
+    repoPath: repo,
+    taskName: "Improve dashboard",
+    baseBranch: "main",
+  });
+  await writeFile(join(session.worktreePath, "dashboard.txt"), "changed\n", "utf8");
+
+  const jsonResult = await runCli(["dashboard", "--repo", repo, "--json"], {
+    env: {
+      HOME: home,
+    },
+  });
+  const report = JSON.parse(jsonResult.stdout) as {
+    repoRoot: string;
+    configExists: boolean;
+    base: { dirty: boolean };
+    config: { commandProfiles: string[] };
+    sessions: { active: number; dirty: number; items: Array<{ id: string; changedFiles: number }> };
+    mcpConfigs: { configured: number };
+    next: string[];
+  };
+
+  assert.equal(report.repoRoot, repo);
+  assert.equal(report.configExists, true);
+  assert.equal(report.base.dirty, false);
+  assert.deepEqual(report.config.commandProfiles, ["build"]);
+  assert.equal(report.sessions.active, 1);
+  assert.equal(report.sessions.dirty, 1);
+  assert.equal(report.sessions.items[0]?.id, session.id);
+  assert.equal(report.sessions.items[0]?.changedFiles, 1);
+  assert.equal(report.mcpConfigs.configured, 1);
+  assert.ok(report.next.includes(`groveyard inspect ${session.id}`));
+
+  const humanResult = await runCli(["dashboard", "--repo", repo], {
+    env: {
+      HOME: home,
+    },
+  });
+
+  assert.match(humanResult.stdout, /____/);
+  assert.match(humanResult.stdout, /Dashboard/);
+  assert.match(humanResult.stdout, /State: ready/);
+  assert.match(humanResult.stdout, /MCP config: Codex/);
+  assert.match(humanResult.stdout, /Sessions/);
+  assert.match(humanResult.stdout, new RegExp(escapeRegExp(session.id)));
+  assert.match(humanResult.stdout, /1 changed/);
+});
+
 test("CLI sessions, inspect, and clean operate on persisted sessions", async () => {
   const repo = await createRepo();
   const service = new WorktreeSessionService();

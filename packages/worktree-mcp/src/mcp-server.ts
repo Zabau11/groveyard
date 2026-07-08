@@ -5,7 +5,7 @@ import { z } from "zod";
 import { WorktreeSessionService } from "./lifecycle.js";
 import type { SessionRecord } from "./sessions.js";
 
-export const mcpServerVersion = "0.1.9";
+export const mcpServerVersion = "0.1.10";
 export const instructionsResourceUri = "groveyard://instructions";
 export const workflowPromptName = "groveyard_session_workflow";
 

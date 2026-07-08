@@ -53,9 +53,12 @@ Run `groveyard init` in any repo where agents should work:
 ```bash
 groveyard init
 groveyard doctor
+groveyard dashboard
 ```
 
 It detects common npm scripts such as `test`, `build`, `lint`, and `typecheck`, then writes `.groveyard.yml`.
+
+`groveyard dashboard` shows the current repo branch, whether the base checkout is dirty, configured command profiles, detected MCP client configs, active session counts, and the latest sessions under the Groveyard ASCII logo.
 
 You can also create `.groveyard.yml` manually:
 

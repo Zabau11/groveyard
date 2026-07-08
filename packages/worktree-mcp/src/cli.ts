@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { loadConfig } from "./config.js";
-import { resolveRepoRoot } from "./git.js";
+import { getCurrentBranch, gitStatusShort, resolveRepoRoot } from "./git.js";
 import { WorktreeSessionService } from "./lifecycle.js";
 import type { SessionRecord } from "./sessions.js";
 
@@ -18,6 +18,8 @@ type ParsedArgs = {
   yes: boolean;
 };
 
+type StyleColor = "bold" | "dim" | "green" | "cyan" | "yellow" | "red";
+
 type AgentConfigTarget = {
   id: "codex" | "claude-desktop" | "cursor";
   name: string;
@@ -29,6 +31,58 @@ type AgentConfigTarget = {
 
 type ConnectWriteResult = AgentConfigTarget & {
   action: "created" | "updated" | "skipped";
+};
+
+type DashboardMcpTarget = AgentConfigTarget & {
+  configured: boolean;
+  configError?: string;
+};
+
+type DashboardSession = {
+  id: string;
+  taskName: string;
+  branch: string;
+  status: SessionRecord["status"];
+  worktreePath: string;
+  updatedAt: string;
+  dirty: boolean | null;
+  changedFiles: number;
+  statusText: string;
+  statusError?: string;
+};
+
+type DashboardReport = {
+  status: "ok";
+  repoRoot: string;
+  branch: string;
+  base: {
+    dirty: boolean;
+    changedFiles: number;
+    statusText: string;
+  };
+  configPath: string;
+  configExists: boolean;
+  config: {
+    worktreesRoot: string;
+    branchPrefix: string;
+    allowDirtyBase: boolean;
+    commandProfiles: string[];
+  };
+  sessions: {
+    total: number;
+    active: number;
+    cleaned: number;
+    dirty: number;
+    clean: number;
+    unknown: number;
+    items: DashboardSession[];
+  };
+  mcpConfigs: {
+    detected: number;
+    configured: number;
+    targets: DashboardMcpTarget[];
+  };
+  next: string[];
 };
 
 const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
@@ -54,6 +108,9 @@ export async function runCli(argv: string[]): Promise<void> {
         return;
       case "connect":
         await connect(args);
+        return;
+      case "dashboard":
+        await dashboard(service, args);
         return;
       case "init":
         await init(args);
@@ -276,6 +333,24 @@ async function connect(args: ParsedArgs): Promise<void> {
   console.log(`  ${style("groveyard doctor", "green")}`);
 }
 
+async function dashboard(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
+  if (!args.json) {
+    printLogo();
+    console.log(style("Dashboard", "bold"));
+    console.log(style("The important state for this repo's agent worktrees.", "dim"));
+    console.log("");
+  }
+
+  const report = await withSpinner("Collecting Groveyard state", () => buildDashboardReport(service, args), args.json);
+
+  if (args.json) {
+    printJson(report);
+    return;
+  }
+
+  printDashboard(report);
+}
+
 async function sessions(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
   const rows = await service.listSessions(args.repoPath);
 
@@ -379,6 +454,7 @@ Usage:
   groveyard init [--repo PATH]      Create .groveyard.yml
   groveyard doctor [--repo PATH]    Check repo/config readiness
   groveyard connect [--repo PATH]   Detect agent configs and connect MCP
+  groveyard dashboard [--repo PATH] Overview repo, MCP config, and sessions
   groveyard sessions [--repo PATH]  List registered sessions
   groveyard inspect <sessionId>     Show session metadata and status
   groveyard commit <sessionId> -m "message"
@@ -390,6 +466,249 @@ Options:
   --force       Overwrite files for commands that support it
   --yes, -y     Confirm prompts for commands that support it
 `);
+}
+
+async function buildDashboardReport(service: WorktreeSessionService, args: ParsedArgs): Promise<DashboardReport> {
+  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  const [config, branch, baseStatus, rows] = await Promise.all([
+    loadConfig(repoRoot),
+    getCurrentBranch(repoRoot),
+    gitStatusShort(repoRoot),
+    service.listSessions(repoRoot),
+  ]);
+  const sessionItems = await Promise.all(rows.map((session) => summarizeSession(service, repoRoot, session)));
+  const configPath = resolve(repoRoot, ".groveyard.yml");
+  const configExists = existsSync(configPath);
+  const targets = await summarizeMcpTargets(detectAgentConfigTargets());
+  const active = sessionItems.filter((session) => session.status === "active");
+  const dirty = active.filter((session) => session.dirty === true);
+  const clean = active.filter((session) => session.dirty === false);
+  const unknown = active.filter((session) => session.dirty === null);
+
+  return {
+    status: "ok",
+    repoRoot,
+    branch,
+    base: {
+      dirty: baseStatus.length > 0,
+      changedFiles: countStatusLines(baseStatus),
+      statusText: baseStatus,
+    },
+    configPath,
+    configExists,
+    config: {
+      worktreesRoot: config.worktreesRoot,
+      branchPrefix: config.branchPrefix,
+      allowDirtyBase: config.allowDirtyBase,
+      commandProfiles: Object.keys(config.commands),
+    },
+    sessions: {
+      total: sessionItems.length,
+      active: active.length,
+      cleaned: sessionItems.filter((session) => session.status === "cleaned").length,
+      dirty: dirty.length,
+      clean: clean.length,
+      unknown: unknown.length,
+      items: sessionItems,
+    },
+    mcpConfigs: {
+      detected: targets.filter((target) => target.detected).length,
+      configured: targets.filter((target) => target.configured).length,
+      targets,
+    },
+    next: dashboardNextSteps({
+      configExists,
+      connected: targets.some((target) => target.configured),
+      activeSessions: active,
+    }),
+  };
+}
+
+async function summarizeSession(service: WorktreeSessionService, repoRoot: string, session: SessionRecord): Promise<DashboardSession> {
+  if (session.status !== "active") {
+    return {
+      id: session.id,
+      taskName: session.taskName,
+      branch: session.branch,
+      status: session.status,
+      worktreePath: session.worktreePath,
+      updatedAt: session.updatedAt,
+      dirty: null,
+      changedFiles: 0,
+      statusText: "",
+    };
+  }
+
+  try {
+    const status = await service.gitStatus({ repoPath: repoRoot, sessionId: session.id });
+
+    return {
+      id: session.id,
+      taskName: session.taskName,
+      branch: session.branch,
+      status: session.status,
+      worktreePath: session.worktreePath,
+      updatedAt: session.updatedAt,
+      dirty: status.status.length > 0,
+      changedFiles: countStatusLines(status.status),
+      statusText: status.status,
+    };
+  } catch (error) {
+    return {
+      id: session.id,
+      taskName: session.taskName,
+      branch: session.branch,
+      status: session.status,
+      worktreePath: session.worktreePath,
+      updatedAt: session.updatedAt,
+      dirty: null,
+      changedFiles: 0,
+      statusText: "",
+      statusError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function printDashboard(report: DashboardReport): void {
+  const ready = !report.base.dirty && report.sessions.unknown === 0;
+  const connectedTargets = report.mcpConfigs.targets.filter((target) => target.configured).map((target) => target.name);
+  const commandProfiles = report.config.commandProfiles.length ? report.config.commandProfiles.map((name) => style(name, "green")).join(", ") : style("none", "dim");
+
+  console.log(`${style("State", "bold")}: ${style(ready ? "ready" : "needs attention", ready ? "green" : "yellow")}`);
+  console.log(`${style("Repo", "cyan")}: ${report.repoRoot}`);
+  console.log(`${style("Branch", "cyan")}: ${report.branch}`);
+  console.log(`${style("Base", "cyan")}: ${report.base.dirty ? style(`${report.base.changedFiles} changed`, "yellow") : style("clean", "green")}`);
+  console.log(`${style("Config", "cyan")}: ${report.configExists ? report.configPath : style("defaults", "dim")}`);
+  console.log(`${style("Profiles", "cyan")}: ${commandProfiles}`);
+  console.log(`${style("MCP config", "cyan")}: ${connectedTargets.length ? style(connectedTargets.join(", "), "green") : style("not connected", "yellow")}`);
+  console.log("");
+
+  console.log(style("Sessions", "bold"));
+  console.log(
+    [
+      `${style(String(report.sessions.active), "green")} active`,
+      `${style(String(report.sessions.dirty), report.sessions.dirty > 0 ? "yellow" : "green")} dirty`,
+      `${style(String(report.sessions.clean), "green")} clean`,
+      `${style(String(report.sessions.cleaned), "dim")} cleaned`,
+    ].join("  "),
+  );
+
+  if (report.sessions.items.length === 0) {
+    console.log(style("No sessions yet.", "dim"));
+  } else {
+    for (const session of report.sessions.items.slice(0, 6)) {
+      console.log(formatDashboardSessionLine(session));
+    }
+
+    if (report.sessions.items.length > 6) {
+      console.log(style(`+${report.sessions.items.length - 6} more sessions`, "dim"));
+    }
+  }
+
+  console.log("");
+  console.log(style("Next", "bold"));
+  for (const step of report.next) {
+    console.log(`  ${style(step, "green")}`);
+  }
+}
+
+async function summarizeMcpTargets(targets: AgentConfigTarget[]): Promise<DashboardMcpTarget[]> {
+  return Promise.all(
+    targets.map(async (target) => {
+      if (!target.exists) {
+        return {
+          ...target,
+          configured: false,
+        };
+      }
+
+      try {
+        const content = await readFile(target.path, "utf8");
+        return {
+          ...target,
+          configured: hasGroveyardMcpConfig(target, content),
+        };
+      } catch (error) {
+        return {
+          ...target,
+          configured: false,
+          configError: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
+  );
+}
+
+function hasGroveyardMcpConfig(target: AgentConfigTarget, content: string): boolean {
+  if (target.format === "toml") {
+    return /\[mcp_servers\.groveyard\]/.test(content);
+  }
+
+  try {
+    const parsed = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
+    return Boolean(parsed.mcpServers?.groveyard);
+  } catch {
+    return /"groveyard"\s*:/.test(content);
+  }
+}
+
+function formatDashboardSessionLine(session: DashboardSession): string {
+  const health = dashboardSessionHealth(session);
+  const task = session.taskName.length > 44 ? `${session.taskName.slice(0, 41)}...` : session.taskName;
+
+  return `  ${style(session.id.padEnd(28), "cyan")} ${style(health.label.padEnd(12), health.color)} ${task.padEnd(46)} ${style(session.branch, "dim")}`;
+}
+
+function dashboardSessionHealth(session: DashboardSession): { label: string; color: StyleColor } {
+  if (session.status !== "active") {
+    return {
+      label: session.status,
+      color: "dim",
+    };
+  }
+
+  if (session.dirty === null) {
+    return {
+      label: "unknown",
+      color: "red",
+    };
+  }
+
+  if (session.dirty) {
+    return {
+      label: `${session.changedFiles} changed`,
+      color: "yellow",
+    };
+  }
+
+  return {
+    label: "clean",
+    color: "green",
+  };
+}
+
+function dashboardNextSteps(input: { configExists: boolean; connected: boolean; activeSessions: DashboardSession[] }): string[] {
+  const steps: string[] = [];
+
+  if (!input.configExists) {
+    steps.push("groveyard init");
+  }
+
+  if (!input.connected) {
+    steps.push("groveyard connect");
+  }
+
+  if (input.activeSessions.length > 0) {
+    steps.push(`groveyard inspect ${input.activeSessions[input.activeSessions.length - 1]!.id}`);
+  } else {
+    steps.push("Create a session from your MCP-capable coding agent");
+  }
+
+  return steps;
+}
+
+function countStatusLines(status: string): number {
+  return status.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
 }
 
 function printLogo(): void {
@@ -583,7 +902,7 @@ function isInteractive(): boolean {
   return Boolean(process.stdout.isTTY && !process.env.CI);
 }
 
-function style(value: string, color: "bold" | "dim" | "green" | "cyan" | "yellow" | "red"): string {
+function style(value: string, color: StyleColor): string {
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
     return value;
   }

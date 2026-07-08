@@ -29,6 +29,7 @@ Running `groveyard` without a subcommand starts the stdio MCP server. Human debu
 groveyard init
 groveyard doctor
 groveyard connect
+groveyard dashboard
 groveyard sessions
 groveyard inspect <sessionId>
 groveyard commit <sessionId> -m "message"
