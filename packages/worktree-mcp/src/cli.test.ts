@@ -55,19 +55,33 @@ test("CLI connect prints MCP config snippets", async () => {
   assert.match(stdout, /\[mcp_servers\.groveyard\]/);
   assert.match(stdout, /"mcpServers"/);
   assert.match(stdout, /"@groveyard\/mcp"/);
+  assert.match(stdout, /Agent instructions/);
+  assert.match(stdout, /\.groveyard\/AGENTS\.md/);
   assert.match(stdout, new RegExp(escapeRegExp(repo)));
 });
 
 test("CLI connect reports snippets as JSON", async () => {
   const repo = await createRepo();
   const { stdout } = await runCli(["connect", "--repo", repo, "--json"]);
-  const report = JSON.parse(stdout) as { status: string; repoRoot: string; codexToml: string; mcpJson: string; targets: Array<{ name: string }> };
+  const report = JSON.parse(stdout) as {
+    status: string;
+    repoRoot: string;
+    codexToml: string;
+    mcpJson: string;
+    agentInstructionsPath: string;
+    agentInstructionText: string;
+    targets: Array<{ name: string }>;
+  };
 
   assert.equal(report.status, "ok");
   assert.equal(report.repoRoot, repo);
   assert.ok(report.targets.some((target) => target.name === "Codex"));
   assert.match(report.codexToml, /\[mcp_servers\.groveyard\]/);
+  assert.match(report.codexToml, /GROVEYARD_AGENT_INSTRUCTIONS/);
   assert.match(report.mcpJson, /"GROVEYARD_REPO"/);
+  assert.match(report.mcpJson, /"GROVEYARD_AGENT_INSTRUCTIONS"/);
+  assert.equal(report.agentInstructionsPath, join(repo, ".groveyard", "AGENTS.md"));
+  assert.match(report.agentInstructionText, /Before code-changing tasks/);
 });
 
 test("CLI connect can write detected config files", async () => {
@@ -85,15 +99,18 @@ test("CLI connect can write detected config files", async () => {
 
   const codexConfig = await readFile(join(home, ".codex", "config.toml"), "utf8");
   const cursorConfig = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8")) as {
-    mcpServers: { groveyard: { command: string; args: string[]; env: { GROVEYARD_REPO: string } } };
+    mcpServers: { groveyard: { command: string; args: string[]; env: { GROVEYARD_REPO: string; GROVEYARD_AGENT_INSTRUCTIONS: string } } };
   };
 
   assert.match(stdout, /Connected/);
+  assert.match(stdout, /Agent instructions/);
   assert.match(codexConfig, /\[mcp_servers\.groveyard\]/);
   assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
+  assert.match(codexConfig, /GROVEYARD_AGENT_INSTRUCTIONS/);
   assert.equal(cursorConfig.mcpServers.groveyard.command, "npx");
   assert.deepEqual(cursorConfig.mcpServers.groveyard.args, ["-y", "@groveyard/mcp"]);
   assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_REPO, repo);
+  assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_AGENT_INSTRUCTIONS, join(repo, ".groveyard", "AGENTS.md"));
 });
 
 test("CLI dashboard summarizes repo, MCP config, and sessions", async () => {

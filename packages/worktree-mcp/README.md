@@ -38,6 +38,7 @@ groveyard clean <sessionId>
 
 Each command accepts `--repo <path>` and `--json`.
 Use `groveyard connect` to detect Codex, Claude Desktop, and Cursor config files, then confirm whether Groveyard should create or update them. In non-interactive terminals it prints ready-to-paste snippets instead. Use `groveyard connect --yes` to write detected configs without prompts.
+Generated MCP config includes both `GROVEYARD_REPO` and `GROVEYARD_AGENT_INSTRUCTIONS`; the latter points at `.groveyard/AGENTS.md` so agents can load the repo-local Groveyard rules.
 
 ## Configuration
 

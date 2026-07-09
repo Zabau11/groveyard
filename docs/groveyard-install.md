@@ -84,6 +84,8 @@ Command profiles are allowlisted. Agents call `run_command_profile` with a profi
 
 ## MCP Client Config
 
+Prefer `groveyard connect --repo .` when possible. It writes or prints MCP config with both `GROVEYARD_REPO` and `GROVEYARD_AGENT_INSTRUCTIONS`, where `GROVEYARD_AGENT_INSTRUCTIONS` points at `.groveyard/AGENTS.md`. Add the printed instruction line to your agent's custom instructions when the client has a separate prompt/settings field.
+
 Use this server config in an MCP-capable agent after publishing:
 
 ```json

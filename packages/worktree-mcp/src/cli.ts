@@ -34,6 +34,13 @@ type ConnectWriteResult = AgentConfigTarget & {
   action: "created" | "updated" | "skipped";
 };
 
+type ConnectSnippets = {
+  codexToml: string;
+  mcpJson: string;
+  agentInstructionsPath: string;
+  agentInstructionText: string;
+};
+
 type DashboardMcpTarget = AgentConfigTarget & {
   configured: boolean;
   configError?: string;
@@ -323,8 +330,14 @@ async function connect(args: ParsedArgs): Promise<void> {
     }
 
     console.log("");
+    console.log(style("Agent instructions", "bold"));
+    console.log(snippets.agentInstructionText);
+    console.log("");
     console.log(style("Restart your coding agent so it reloads MCP config.", "dim"));
   } else {
+    console.log(style("Agent instructions", "bold"));
+    console.log(snippets.agentInstructionText);
+    console.log("");
     console.log(style("Manual config", "bold"));
     console.log(style("Codex ~/.codex/config.toml", "dim"));
     console.log(snippets.codexToml);
@@ -760,7 +773,8 @@ function formatCommandProfiles(commands: Record<string, string>): string {
   return names.length ? names.map((name) => style(name, "green")).join(", ") : style("none", "dim");
 }
 
-function createConnectSnippets(repoRoot: string): { codexToml: string; mcpJson: string } {
+function createConnectSnippets(repoRoot: string): ConnectSnippets {
+  const agentInstructions = createAgentInstructionReference(repoRoot);
   const args = ["-y", "@groveyard/mcp"];
   const jsonConfig = {
     mcpServers: {
@@ -769,6 +783,7 @@ function createConnectSnippets(repoRoot: string): { codexToml: string; mcpJson: 
         args,
         env: {
           GROVEYARD_REPO: repoRoot,
+          GROVEYARD_AGENT_INSTRUCTIONS: agentInstructions.path,
         },
       },
     },
@@ -782,8 +797,20 @@ function createConnectSnippets(repoRoot: string): { codexToml: string; mcpJson: 
       "",
       "[mcp_servers.groveyard.env]",
       `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
+      `GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(agentInstructions.path)}`,
     ].join("\n"),
     mcpJson: JSON.stringify(jsonConfig, null, 2),
+    agentInstructionsPath: agentInstructions.path,
+    agentInstructionText: agentInstructions.text,
+  };
+}
+
+function createAgentInstructionReference(repoRoot: string): { path: string; text: string } {
+  const path = join(repoRoot, agentInstructionsPath);
+
+  return {
+    path,
+    text: `Before code-changing tasks in this repository, read and follow ${path}.`,
   };
 }
 
@@ -868,6 +895,7 @@ async function writeAgentConfig(target: AgentConfigTarget, repoRoot: string): Pr
 }
 
 function upsertCodexToml(existing: string, repoRoot: string): string {
+  const agentInstructions = createAgentInstructionReference(repoRoot);
   const block = [
     "[mcp_servers.groveyard]",
     'command = "npx"',
@@ -875,6 +903,7 @@ function upsertCodexToml(existing: string, repoRoot: string): string {
     "",
     "[mcp_servers.groveyard.env]",
     `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
+    `GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(agentInstructions.path)}`,
   ].join("\n");
 
   const pattern = /\n?\[mcp_servers\.groveyard\][\s\S]*?(?=\n\[mcp_servers\.|\n\[[^\]]+\]|\s*$)/;
@@ -888,6 +917,7 @@ function upsertCodexToml(existing: string, repoRoot: string): string {
 }
 
 function upsertMcpJson(existing: string, repoRoot: string): string {
+  const agentInstructions = createAgentInstructionReference(repoRoot);
   const config = existing.trim() ? (JSON.parse(existing) as { mcpServers?: Record<string, unknown> }) : {};
   config.mcpServers = {
     ...config.mcpServers,
@@ -896,6 +926,7 @@ function upsertMcpJson(existing: string, repoRoot: string): string {
       args: ["-y", "@groveyard/mcp"],
       env: {
         GROVEYARD_REPO: repoRoot,
+        GROVEYARD_AGENT_INSTRUCTIONS: agentInstructions.path,
       },
     },
   };
