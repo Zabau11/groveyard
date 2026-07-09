@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Groveyard - Safe worktrees for coding agents",
+  title: "Git worktrees for AI coding agents",
   description:
-    "Groveyard is an MCP server and CLI that gives coding agents safe Git worktree sessions, scoped commands, diffs, and cleanup.",
+    "A local MCP server that lets AI coding agents create, inspect, and clean up isolated Git worktrees.",
 };
 
 type RootLayoutProps = {

@@ -73,6 +73,12 @@ function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     status: "active",
     createdAt: "2026-07-06T12:00:00.000Z",
     updatedAt: "2026-07-06T12:00:00.000Z",
+    contract: {
+      readPaths: [],
+      listedPaths: [],
+      writtenPaths: [],
+      commandProfilesRun: [],
+    },
     ...overrides,
   };
 }

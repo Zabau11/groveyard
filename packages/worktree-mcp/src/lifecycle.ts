@@ -52,6 +52,17 @@ export type CommitSessionInput = SessionLookupInput & {
   message: string;
 };
 
+export type ContractStatus = {
+  session: SessionRecord;
+  readyToCommit: boolean;
+  checks: {
+    activeSession: boolean;
+    statusReviewedAfterLatestMutation: boolean;
+    diffReviewedAfterLatestMutation: boolean;
+  };
+  requiredActions: string[];
+};
+
 export class WorktreeSessionService {
   async createSession(input: CreateSessionInput): Promise<SessionRecord> {
     const repoRoot = await this.resolveRepo(input.repoPath);
@@ -82,6 +93,12 @@ export class WorktreeSessionService {
       status: "active",
       createdAt: now,
       updatedAt: now,
+      contract: {
+        readPaths: [],
+        listedPaths: [],
+        writtenPaths: [],
+        commandProfilesRun: [],
+      },
     };
 
     await this.storeForRepo(repoRoot).add(session);
@@ -104,6 +121,7 @@ export class WorktreeSessionService {
     const store = this.storeForRepo(repoRoot);
     const session = await store.get(input.sessionId);
 
+    assertActiveSession(session, "cleanup_session");
     assertOwnedWorktreePath(repoRoot, session.worktreePath, config.worktreesRoot);
     await removeGitWorktree(repoRoot, session.worktreePath);
 
@@ -114,53 +132,82 @@ export class WorktreeSessionService {
   }
 
   async gitStatus(input: SessionLookupInput): Promise<{ session: SessionRecord; status: string }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "git_status");
+    const status = await gitStatusShort(session.worktreePath);
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      lastStatusAt: new Date().toISOString(),
+    }));
+
     return {
-      session,
-      status: await gitStatusShort(session.worktreePath),
+      session: updated,
+      status,
     };
   }
 
   async gitDiff(input: SessionLookupInput): Promise<{ session: SessionRecord; diff: string }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "git_diff");
+    const diff = await gitDiff(session.worktreePath);
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      lastDiffAt: new Date().toISOString(),
+    }));
+
     return {
-      session,
-      diff: await gitDiff(session.worktreePath),
+      session: updated,
+      diff,
     };
   }
 
   async readFile(input: SessionFileInput): Promise<{ session: SessionRecord; path: string; content: string }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "read_file");
     const target = await resolveExistingSessionPath(session.worktreePath, input.path);
+    const path = toSessionRelativePath(session.worktreePath, target);
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      readPaths: addUnique(contract.readPaths, path),
+    }));
 
     return {
-      session,
-      path: toSessionRelativePath(session.worktreePath, target),
+      session: updated,
+      path,
       content: await readFile(target, "utf8"),
     };
   }
 
   async writeFile(input: SessionWriteFileInput): Promise<{ session: SessionRecord; path: string; bytesWritten: number }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "write_file");
+    await this.assertExistingFileWasRead(session, input.path);
     const target = await resolveWritableSessionPath(session.worktreePath, input.path);
+    const path = toSessionRelativePath(session.worktreePath, target);
 
     await writeFile(target, input.content, "utf8");
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      writtenPaths: addUnique(contract.writtenPaths, path),
+      lastMutationAt: new Date().toISOString(),
+    }));
 
     return {
-      session,
-      path: toSessionRelativePath(session.worktreePath, target),
+      session: updated,
+      path,
       bytesWritten: Buffer.byteLength(input.content, "utf8"),
     };
   }
 
   async listFiles(input: SessionFileInput): Promise<{ session: SessionRecord; path: string; files: string[] }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "list_files");
     const target = await resolveExistingSessionPath(session.worktreePath, input.path);
     const files = await listRegularFiles(session.worktreePath, target);
+    const path = toSessionRelativePath(session.worktreePath, target) || ".";
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      listedPaths: addUnique(contract.listedPaths, path),
+    }));
 
     return {
-      session,
-      path: toSessionRelativePath(session.worktreePath, target) || ".",
+      session: updated,
+      path,
       files,
     };
   }
@@ -168,6 +215,7 @@ export class WorktreeSessionService {
   async runCommandProfile(input: RunCommandProfileInput): Promise<{ session: SessionRecord; result: CommandRunResult }> {
     const repoRoot = await this.resolveRepo(input.repoPath);
     const session = await this.storeForRepo(repoRoot).get(input.sessionId);
+    assertActiveSession(session, "run_command_profile");
     const config = await loadConfig(repoRoot);
     const command = config.commands[input.profile];
 
@@ -175,14 +223,27 @@ export class WorktreeSessionService {
       throw new UnknownCommandProfileError(input.profile);
     }
 
+    const result = await executeCommandProfile(session.worktreePath, input.profile, command);
+    const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
+      ...contract,
+      commandProfilesRun: addUnique(contract.commandProfilesRun, input.profile),
+      lastMutationAt: new Date().toISOString(),
+    }));
+
     return {
-      session,
-      result: await executeCommandProfile(session.worktreePath, input.profile, command),
+      session: updated,
+      result,
     };
   }
 
   async commitSession(input: CommitSessionInput): Promise<{ session: SessionRecord; commit: GitCommitResult; status: string }> {
-    const session = await this.getSession(input);
+    const session = await this.getActiveSession(input, "commit_session");
+    const contractStatus = evaluateContract(session);
+
+    if (!contractStatus.readyToCommit) {
+      throw new Error(`Cannot commit session before contract review is complete. Required actions: ${contractStatus.requiredActions.join(", ")}`);
+    }
+
     const commit = await commitAllChanges(session.worktreePath, input.message);
 
     return {
@@ -192,12 +253,55 @@ export class WorktreeSessionService {
     };
   }
 
+  async contractStatus(input: SessionLookupInput): Promise<ContractStatus> {
+    const session = await this.getSession(input);
+    return {
+      session,
+      ...evaluateContract(session),
+    };
+  }
+
   private async resolveRepo(repoPath = process.env.GROVEYARD_REPO ?? process.cwd()): Promise<string> {
     return resolveRepoRoot(resolve(repoPath));
   }
 
   private storeForRepo(repoRoot: string): JsonSessionStore {
     return new JsonSessionStore(join(repoRoot, metadataDirectory, "sessions.json"));
+  }
+
+  private async getActiveSession(input: SessionLookupInput, toolName: string): Promise<SessionRecord> {
+    const session = await this.getSession(input);
+    assertActiveSession(session, toolName);
+    return session;
+  }
+
+  private async updateContract(
+    repoPath: string | undefined,
+    sessionId: string,
+    update: (contract: SessionRecord["contract"]) => SessionRecord["contract"],
+  ): Promise<SessionRecord> {
+    const repoRoot = await this.resolveRepo(repoPath);
+    return this.storeForRepo(repoRoot).update(sessionId, (current) => ({
+      ...current,
+      contract: update(current.contract),
+    }));
+  }
+
+  private async assertExistingFileWasRead(session: SessionRecord, userPath: string): Promise<void> {
+    try {
+      const existingTarget = await resolveExistingSessionPath(session.worktreePath, userPath);
+      const path = toSessionRelativePath(session.worktreePath, existingTarget);
+
+      if (!session.contract.readPaths.includes(path)) {
+        throw new Error(`Contract violation: read_file must be called for "${path}" before write_file can overwrite it.`);
+      }
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return;
+      }
+
+      throw error;
+    }
   }
 }
 
@@ -220,8 +324,56 @@ export function assertOwnedWorktreePath(repoRoot: string, worktreePath: string, 
   }
 }
 
+export function assertActiveSession(session: SessionRecord, toolName: string): void {
+  if (session.status !== "active") {
+    throw new Error(`Contract violation: ${toolName} requires an active session, but ${session.id} is ${session.status}.`);
+  }
+}
+
+export function evaluateContract(session: SessionRecord): Omit<ContractStatus, "session"> {
+  const activeSession = session.status === "active";
+  const lastMutationAt = session.contract.lastMutationAt;
+  const statusReviewedAfterLatestMutation = !lastMutationAt || isAtOrAfter(session.contract.lastStatusAt, lastMutationAt);
+  const diffReviewedAfterLatestMutation = !lastMutationAt || isAtOrAfter(session.contract.lastDiffAt, lastMutationAt);
+  const requiredActions: string[] = [];
+
+  if (!activeSession) {
+    requiredActions.push("create or select an active session");
+  }
+
+  if (!statusReviewedAfterLatestMutation) {
+    requiredActions.push("call git_status after the latest write or command");
+  }
+
+  if (!diffReviewedAfterLatestMutation) {
+    requiredActions.push("call git_diff after the latest write or command");
+  }
+
+  return {
+    readyToCommit: activeSession && statusReviewedAfterLatestMutation && diffReviewedAfterLatestMutation,
+    checks: {
+      activeSession,
+      statusReviewedAfterLatestMutation,
+      diffReviewedAfterLatestMutation,
+    },
+    requiredActions,
+  };
+}
+
 function createSessionId(): string {
   return `sess_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
+}
+
+function addUnique(values: string[], value: string): string[] {
+  return values.includes(value) ? values : [...values, value];
+}
+
+function isAtOrAfter(value: string | undefined, baseline: string): boolean {
+  return Boolean(value && value >= baseline);
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 async function listRegularFiles(worktreePath: string, directoryPath: string, limit = 1000): Promise<string[]> {

@@ -26,6 +26,7 @@ export const recommendedWorkflow = [
   "run_command_profile when a relevant profile exists",
   "git_status",
   "git_diff",
+  "contract_status",
   "commit_session only on request",
   "cleanup_session only on request",
 ];
@@ -63,7 +64,8 @@ export async function startMcpServer(): Promise<void> {
     version: mcpServerVersion,
   });
 
-  const repoPathDescription = "Path inside the Git repository to manage. Defaults to GROVEYARD_REPO, then the MCP server working directory.";
+  const repoPathDescription =
+    "Path inside the Git repository to manage, resolved on the MCP server process filesystem. Defaults to GROVEYARD_REPO, then the MCP server working directory. For remote or sandboxed MCP clients, this path must be visible to the Groveyard server host.";
   const sessionIdDescription = "Session ID returned by create_session. All operations are scoped to this registered worktree session.";
 
   server.registerResource(
@@ -199,6 +201,19 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
+    "contract_status",
+    "Return Groveyard's enforced contract status for a registered session, including whether status and diff were reviewed after the latest mutation.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+    },
+    async ({ repoPath, sessionId }) =>
+      jsonResponse("contract_status", await sessionService.contractStatus({ repoPath, sessionId }), [
+        "Complete every requiredAction before committing or reporting the task as ready.",
+      ]),
+  );
+
+  server.tool(
     "read_file",
     "Read a UTF-8 text file inside a registered worktree session. Paths are relative and cannot escape the session worktree.",
     {
@@ -276,8 +291,10 @@ export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "bran
     `Work only inside ${session.worktreePath}.`,
     `Keep changes on branch ${session.branch}.`,
     "Start by listing or reading the files relevant to the task.",
+    "Call read_file before overwriting any existing file.",
     "After edits, run a relevant command profile if one exists.",
     "Before your final answer, call git_status and git_diff for this session.",
+    "Call contract_status to confirm the enforced checklist is clear.",
     "Do not commit or clean up this session unless the user explicitly asks.",
   ];
 }

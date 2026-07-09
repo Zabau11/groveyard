@@ -34,7 +34,22 @@ export async function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 export async function resolveRepoRoot(repoPath: string): Promise<string> {
-  return runGit(repoPath, ["rev-parse", "--show-toplevel"]);
+  try {
+    return await runGit(repoPath, ["rev-parse", "--show-toplevel"]);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      const details = error.output ? `\nGit output:\n${error.output}` : "";
+      throw new Error(
+        [
+          `Cannot resolve Groveyard repoPath "${repoPath}".`,
+          "repoPath is resolved on the MCP server process filesystem, not on a remote caller's filesystem.",
+          "Run @groveyard/mcp as a local stdio server with its cwd set to the repository, set GROVEYARD_REPO, or pass a path visible to that server.",
+        ].join(" ") + details,
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function getCurrentBranch(repoRoot: string): Promise<string> {

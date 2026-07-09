@@ -88,6 +88,13 @@ Tool responses use a consistent JSON envelope:
 
 `server_info` returns the recommended agent workflow, the Groveyard agent contract, and a completion checklist. `create_session` also returns session-specific next steps so coding agents know to work only inside the returned `worktreePath`, use the returned `sessionId`, inspect `git_status` and `git_diff`, and avoid committing or cleaning up unless the user asks.
 
+The contract is enforced by the server, not just described in prompts:
+
+- Session-scoped tools require a registered active session.
+- Existing files must be read with `read_file` before `write_file` can overwrite them.
+- `commit_session` refuses to commit until `git_status` and `git_diff` have both run after the latest write or command profile.
+- `contract_status` reports the current checklist and required actions.
+
 MCP clients can also discover the same playbook through:
 
 - Resource: `groveyard://instructions`

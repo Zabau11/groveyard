@@ -1,206 +1,65 @@
-import { CommandStrip } from "./components/CommandStrip";
-import { Header } from "./components/Header";
 import { AsciiLogo } from "./components/AsciiLogo";
-import { TerminalDemo } from "./components/TerminalDemo";
-
-const advantages = [
-  {
-    kicker: "Isolation",
-    title: "Agents work in disposable branches",
-    body: "Every task starts in a Git worktree with a tracked session id, branch, base branch, and cleanup path.",
-  },
-  {
-    kicker: "Control",
-    title: "Commands come from your config",
-    body: "Run test, lint, build, or typecheck profiles without handing the agent arbitrary shell access.",
-  },
-  {
-    kicker: "Review",
-    title: "Status and diff are first-class",
-    body: "The MCP flow pushes agents to inspect changed files before saying a task is done.",
-  },
-  {
-    kicker: "Setup",
-    title: "Connect detects local agent configs",
-    body: "Groveyard finds Codex, Claude Desktop, and Cursor config locations, then asks before creating files.",
-  },
-];
-
-const uses = [
-  {
-    title: "Parallel agent tasks",
-    body: "Spin up independent sessions for bug fixes, refactors, and docs without dirtying your base checkout.",
-  },
-  {
-    title: "Safe command execution",
-    body: "Expose only named command profiles, then let the agent run the checks that matter for that repo.",
-  },
-  {
-    title: "Cleaner review handoff",
-    body: "Ask the agent for the session branch, diff, and commit SHA instead of hunting through a mixed tree.",
-  },
-];
-
-const setupSteps = [
-  ["01", "Install", "npm install -g @groveyard/mcp"],
-  ["02", "Connect", "groveyard connect"],
-  ["03", "Check repo", "groveyard doctor --repo ."],
-  ["04", "Let the agent create a session", "create_session"],
-];
 
 export default function Home() {
   return (
-    <>
-      <Header />
+    <main className="page-shell">
+      <section className="hero" aria-labelledby="hero-title">
+        <AsciiLogo className="hero-logo" decorative glitch />
 
-      <main id="top">
-        <section className="hero-section">
-          <div className="hero-copy">
-            <p className="eyebrow">MCP worktrees for coding agents</p>
-            <h1>
-              Groveyard
-              {" "}
-              <span>Clean branches for ambitious agents.</span>
-            </h1>
-            <p className="hero-lede">
-              Spin up isolated workspaces where agents can explore, edit, test, diff, and commit without trampling your main checkout.
-            </p>
-            <CommandStrip />
-            <div className="hero-actions">
-              <a className="primary-link" href="#setup">
-                Start a session
-              </a>
-              <a className="secondary-link" href="#advantages">
-                See why it works
-              </a>
-            </div>
-          </div>
+        <h1 id="hero-title">Git Worktree MCP</h1>
+        <p className="hero-lede">Clean worktrees for coding agents. Local, small, and safe to inspect.</p>
 
-          <TerminalDemo />
-        </section>
+        <a
+          aria-label="Open GitHub repository"
+          className="github-link"
+          href="https://github.com/Zabau11/orchestrator"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path
+              clipRule="evenodd"
+              d="M12 2C6.48 2 2 6.59 2 12.25c0 4.52 2.87 8.36 6.84 9.72.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.56 2.35 1.11 2.92.85.09-.67.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.34 9.34 0 0 1 12 7.01c.85 0 1.7.12 2.5.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.59.69.49A10.08 10.08 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"
+              fillRule="evenodd"
+            />
+          </svg>
+        </a>
+      </section>
 
-        <section className="signal-band" aria-label="Groveyard summary">
-          <div>
-            <strong>1 command</strong>
-            <span>detects agent configs</span>
-          </div>
-          <div>
-            <strong>1 worktree</strong>
-            <span>per coding task</span>
-          </div>
-          <div>
-            <strong>0 shell</strong>
-            <span>for command profiles</span>
-          </div>
-        </section>
+      <section className="docs-section" id="install" aria-labelledby="install-title">
+        <h2 id="install-title">Installation</h2>
+        <p>Install the Groveyard MCP package in the repository where agents should work.</p>
+        <pre className="command-line">
+          <code>npm install @groveyard/mcp</code>
+          <span className="copy-icon" aria-hidden="true" />
+        </pre>
+      </section>
 
-        <section className="content-section split-section" id="advantages">
-          <div>
-            <p className="eyebrow">Advantages</p>
-            <h2>Built for real repos, not demo prompts.</h2>
-            <p>
-              Groveyard gives an MCP-capable agent a predictable workspace and a narrow set of tools. The agent can create a session,
-              inspect files, run configured checks, show a diff, and commit the work without touching your active tree.
-            </p>
-          </div>
-          <div className="advantage-grid">
-            {advantages.map((advantage) => (
-              <article key={advantage.title}>
-                <span className="card-kicker">{advantage.kicker}</span>
-                <h3>{advantage.title}</h3>
-                <p>{advantage.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="content-section workflow-section" id="uses">
-          <div className="workflow-copy">
-            <p className="eyebrow">Use cases</p>
-            <h2>Let agents move faster while Git stays legible.</h2>
-            <p>
-              Use Groveyard when multiple coding agents, background tasks, or experiments need to work around the same repository without
-              stomping on local changes.
-            </p>
-          </div>
-          <div className="workflow-visual" aria-hidden="true">
-            <svg viewBox="0 0 680 340">
-              <defs>
-                <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-                  <path d="M 28 0 L 0 0 0 28" />
-                </pattern>
-              </defs>
-              <rect className="grid-fill" width="680" height="340" />
-              <path className="trunk" d="M88 170H592" />
-              <path className="branch branch-one" d="M210 170C250 102 312 82 392 92" />
-              <path className="branch branch-two" d="M292 170C336 238 404 258 500 236" />
-              <path className="branch branch-three" d="M392 170C430 128 478 116 548 126" />
-              <g className="node main-node">
-                <circle cx="88" cy="170" r="10" />
-                <text x="68" y="204">
-                  main
-                </text>
-              </g>
-              <g className="node">
-                <circle cx="392" cy="92" r="9" />
-                <text x="338" y="70">
-                  agent/refactor
-                </text>
-              </g>
-              <g className="node">
-                <circle cx="500" cy="236" r="9" />
-                <text x="462" y="272">
-                  agent/fix
-                </text>
-              </g>
-              <g className="node">
-                <circle cx="548" cy="126" r="9" />
-                <text x="502" y="104">
-                  agent/docs
-                </text>
-              </g>
-              <g className="node main-node">
-                <circle cx="592" cy="170" r="10" />
-                <text x="560" y="204">
-                  review
-                </text>
-              </g>
-            </svg>
-          </div>
-          <div className="use-grid">
-            {uses.map((use) => (
-              <article key={use.title}>
-                <h3>{use.title}</h3>
-                <p>{use.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="content-section setup-section" id="setup">
-          <div>
-            <p className="eyebrow">Setup</p>
-            <h2>Connect once. Work in sessions.</h2>
-          </div>
-          <div className="setup-grid">
-            {setupSteps.map(([number, title, command]) => (
-              <article className="setup-step" key={number}>
-                <span>{number}</span>
-                <h3>{title}</h3>
-                <code>{command}</code>
-              </article>
-            ))}
-          </div>
-        </section>
-      </main>
+      <section className="docs-section" aria-labelledby="usage-title">
+        <h2 id="usage-title">Usage</h2>
+        <p>Ask your agent to use Groveyard. The server returns the workflow context it needs to stay safe.</p>
+        <pre className="code-block">
+          <code>
+            <span className="token-muted">You:</span>
+            {"\n"}
+            <span className="token-string">"Create a Groveyard session for the auth refactor."</span>
+            {"\n\n"}
+            <span className="token-muted">Groveyard gives the agent:</span>
+            {"\n"}
+            <span className="token-key">sessionId</span>     which session to use
+            {"\n"}
+            <span className="token-key">worktreePath</span>  where edits are allowed
+            {"\n"}
+            <span className="token-key">nextSteps</span>     read, edit, test, diff, report
+            {"\n"}
+            <span className="token-key">guardrails</span>    scoped files + approved commands
+            {"\n"}
+            <span className="token-key">checklist</span>     status, diff, commit or cleanup
+          </code>
+        </pre>
+      </section>
 
       <footer className="site-footer">
-        <div className="footer-meta">
-          <span>Groveyard</span>
-          <span>Safe Git worktree sessions for coding agents.</span>
-        </div>
-        <AsciiLogo className="footer-logo" glitch />
+        <AsciiLogo className="footer-logo" decorative glitch />
       </footer>
-    </>
+    </main>
   );
 }

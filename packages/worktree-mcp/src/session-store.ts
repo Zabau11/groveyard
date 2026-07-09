@@ -54,8 +54,8 @@ export class JsonSessionStore {
       sessions: [...data.sessions, session],
     };
 
-    await this.save(nextData);
-    return session;
+    const saved = await this.save(nextData);
+    return saved.sessions.find((candidate) => candidate.id === session.id) ?? session;
   }
 
   async update(sessionId: string, update: (session: SessionRecord) => SessionRecord): Promise<SessionRecord> {
@@ -99,13 +99,14 @@ export class JsonSessionStore {
     return sessionRegistrySchema.parse(JSON.parse(raw));
   }
 
-  private async save(data: SessionRegistryData): Promise<void> {
+  private async save(data: SessionRegistryData): Promise<SessionRegistryData> {
     const parsed = sessionRegistrySchema.parse(data);
     await mkdir(dirname(this.registryPath), { recursive: true });
 
     const tempPath = `${this.registryPath}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(tempPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
     await rename(tempPath, this.registryPath);
+    return parsed;
   }
 }
 

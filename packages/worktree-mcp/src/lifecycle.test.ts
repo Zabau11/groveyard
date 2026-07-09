@@ -96,6 +96,11 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   assert.match(diff.diff, /# Updated/);
   assert.match(diff.diff, /diff --git a\/src\/new-file\.txt b\/src\/new-file\.txt/);
   assert.match(diff.diff, /new file/);
+  const reviewedStatus = await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  assert.match(reviewedStatus.status, /M README\.md/);
+
+  const contract = await service.contractStatus({ repoPath: repo, sessionId: created.id });
+  assert.equal(contract.readyToCommit, true);
 
   const committed = await service.commitSession({
     repoPath: repo,
@@ -113,6 +118,74 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
 
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
   assert.equal(cleaned.status, "cleaned");
+});
+
+test("WorktreeSessionService enforces read-before-overwrite and review-before-commit", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Enforce contract",
+    baseBranch: "main",
+  });
+
+  await assert.rejects(
+    () =>
+      service.writeFile({
+        repoPath: repo,
+        sessionId: created.id,
+        path: "README.md",
+        content: "# Overwrite\n",
+      }),
+    /read_file must be called/,
+  );
+
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({
+    repoPath: repo,
+    sessionId: created.id,
+    path: "README.md",
+    content: "# Overwrite\n",
+  });
+
+  const needsReview = await service.contractStatus({ repoPath: repo, sessionId: created.id });
+  assert.equal(needsReview.readyToCommit, false);
+  assert.deepEqual(needsReview.requiredActions, ["call git_status after the latest write or command", "call git_diff after the latest write or command"]);
+
+  await assert.rejects(
+    () =>
+      service.commitSession({
+        repoPath: repo,
+        sessionId: created.id,
+        message: "Should not commit",
+      }),
+    /contract review is complete/,
+  );
+
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+
+  const ready = await service.contractStatus({ repoPath: repo, sessionId: created.id });
+  assert.equal(ready.readyToCommit, true);
+
+  await service.cleanupSession({ repoPath: repo, sessionId: created.id });
+});
+
+test("WorktreeSessionService rejects active operations after cleanup", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Cleanup contract",
+    baseBranch: "main",
+  });
+
+  await service.cleanupSession({ repoPath: repo, sessionId: created.id });
+
+  await assert.rejects(
+    () => service.gitStatus({ repoPath: repo, sessionId: created.id }),
+    /requires an active session/,
+  );
 });
 
 test("WorktreeSessionService rejects path escape attempts", async () => {
@@ -192,6 +265,15 @@ test("WorktreeSessionService rejects dirty base repositories", async () => {
   );
 });
 
+test("WorktreeSessionService explains repoPath filesystem mismatches", async () => {
+  const service = new WorktreeSessionService();
+
+  await assert.rejects(
+    () => service.listSessions("/tmp/groveyard-missing-repo"),
+    /repoPath is resolved on the MCP server process filesystem/,
+  );
+});
+
 test("WorktreeSessionService honors worktree root, branch prefix, and dirty-base config", async () => {
   const repo = await createRepo();
   const service = new WorktreeSessionService();
@@ -246,6 +328,12 @@ function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     status: "active",
     createdAt: "2026-07-07T12:00:00.000Z",
     updatedAt: "2026-07-07T12:00:00.000Z",
+    contract: {
+      readPaths: [],
+      listedPaths: [],
+      writtenPaths: [],
+      commandProfilesRun: [],
+    },
     ...overrides,
   };
 }

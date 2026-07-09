@@ -112,6 +112,8 @@ For local development before publishing:
 
 If the client supports setting a working directory, set it to the repository you want to manage. Otherwise, pass `repoPath` when calling tools.
 
+Important: `repoPath` is resolved by the Groveyard MCP server process, not by the agent process making the tool call. For normal local MCP use, run Groveyard as a stdio server through `npx -y @groveyard/mcp` with the server `cwd` set to your repository, set `GROVEYARD_REPO`, or pass an absolute path that exists on the same machine/container where Groveyard is running. If an MCP host runs tools in a separate remote sandbox, mount/clone the repository into that server environment first.
+
 ## First Agent Workflow
 
 The agent should call tools in this order:
@@ -138,9 +140,12 @@ Minimum useful flow:
 4. run_command_profile({ profile: "test" }) if configured
 5. git_status to summarize changed files
 6. git_diff to review the patch
-7. commit_session({ message }) to commit the session branch
-8. cleanup_session when the user is done with the worktree
+7. contract_status to confirm the enforced checklist is clear
+8. commit_session({ message }) to commit the session branch
+9. cleanup_session when the user is done with the worktree
 ```
+
+Groveyard enforces the agent contract at runtime. Session-scoped tools reject inactive or cleaned sessions, `write_file` refuses to overwrite an existing file until that file has been read through `read_file`, and `commit_session` refuses to commit until `git_status` and `git_diff` have both run after the latest write or command profile.
 
 ## Human CLI
 
