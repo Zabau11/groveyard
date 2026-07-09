@@ -743,7 +743,7 @@ function countStatusLines(status: string): number {
 
 function printLogo(): void {
   for (const line of groveyardAscii.split("\n")) {
-    console.log(style(line, "green"));
+    console.log(formatLogoLine(line));
   }
 }
 
@@ -957,6 +957,43 @@ function style(value: string, color: StyleColor): string {
 
   const [open, close] = codes[color];
   return `${open}${value}${close}`;
+}
+
+function formatLogoLine(line: string): string {
+  if (!process.stdout.isTTY || process.env.NO_COLOR) {
+    return line;
+  }
+
+  const firstBreak = Math.max(1, Math.floor(line.length * 0.34));
+  const secondBreak = Math.max(firstBreak + 1, Math.floor(line.length * 0.68));
+  const visible = line.trimEnd().length;
+  const redAccent = Math.max(0, visible - 2);
+
+  return Array.from(line)
+    .map((character, index) => {
+      if (character === " ") {
+        return character;
+      }
+
+      if (visible >= 12 && index >= redAccent) {
+        return truecolor(character, 255, 94, 87);
+      }
+
+      if (index >= secondBreak) {
+        return truecolor(character, 186, 255, 208);
+      }
+
+      if (index >= firstBreak) {
+        return truecolor(character, 114, 255, 168);
+      }
+
+      return truecolor(character, 76, 255, 146);
+    })
+    .join("");
+}
+
+function truecolor(value: string, red: number, green: number, blue: number): string {
+  return `\x1b[38;2;${red};${green};${blue}m${value}\x1b[39m`;
 }
 
 function readOptionValue(values: string[], name: string): string | undefined {
