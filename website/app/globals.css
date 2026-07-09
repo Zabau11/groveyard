@@ -162,6 +162,7 @@ code {
   position: relative;
   width: 30px;
   height: 30px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -171,6 +172,7 @@ code {
   background: #031109;
   font-family: var(--font-sans);
   cursor: pointer;
+  appearance: none;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -210,6 +212,11 @@ code {
   transform: translateY(-1px);
 }
 
+.copy-icon:focus-visible {
+  outline: 2px solid rgba(186, 255, 208, 0.85);
+  outline-offset: 3px;
+}
+
 .copy-icon:hover::before,
 .copy-icon:hover::after {
   border-color: var(--green);
@@ -222,6 +229,24 @@ code {
 
 .copy-icon:hover::after {
   transform: translate(3px, 3px);
+}
+
+.copy-state {
+  position: absolute;
+  right: 34px;
+  min-width: 48px;
+  color: var(--green-soft);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  text-align: right;
+  transform: translateY(1px);
+  transition: opacity 140ms ease;
+}
+
+.copy-state:not(:empty) {
+  opacity: 1;
 }
 
 .code-block {

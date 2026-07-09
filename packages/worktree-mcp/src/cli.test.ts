@@ -58,11 +58,13 @@ test("CLI terminal banner matches the website ASCII art", async () => {
 
 test("CLI connect prints MCP config snippets", async () => {
   const repo = await createRepo();
+  const serverName = expectedConnectServerName(repo);
   const { stdout } = await runCli(["connect", "--repo", repo]);
 
   assert.match(stdout, /Connect/);
-  assert.match(stdout, /\[mcp_servers\.groveyard\]/);
+  assert.match(stdout, new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\]`));
   assert.match(stdout, /"mcpServers"/);
+  assert.match(stdout, new RegExp(escapeRegExp(`"${serverName}"`)));
   assert.match(stdout, /"@groveyard\/mcp"/);
   assert.match(stdout, /Agent instructions/);
   assert.match(stdout, /\.groveyard\/AGENTS\.md/);
@@ -79,14 +81,18 @@ test("CLI connect reports snippets as JSON", async () => {
     mcpJson: string;
     agentInstructionsPath: string;
     agentInstructionText: string;
+    serverName: string;
     targets: Array<{ name: string }>;
   };
+  const serverName = expectedConnectServerName(repo);
 
   assert.equal(report.status, "ok");
   assert.equal(report.repoRoot, repo);
+  assert.equal(report.serverName, serverName);
   assert.ok(report.targets.some((target) => target.name === "Codex"));
-  assert.match(report.codexToml, /\[mcp_servers\.groveyard\]/);
+  assert.match(report.codexToml, new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\]`));
   assert.match(report.codexToml, /GROVEYARD_AGENT_INSTRUCTIONS/);
+  assert.match(report.mcpJson, new RegExp(escapeRegExp(`"${serverName}"`)));
   assert.match(report.mcpJson, /"GROVEYARD_REPO"/);
   assert.match(report.mcpJson, /"GROVEYARD_AGENT_INSTRUCTIONS"/);
   assert.equal(report.agentInstructionsPath, join(repo, ".groveyard", "AGENTS.md"));
@@ -108,18 +114,96 @@ test("CLI connect can write detected config files", async () => {
 
   const codexConfig = await readFile(join(home, ".codex", "config.toml"), "utf8");
   const cursorConfig = JSON.parse(await readFile(join(home, ".cursor", "mcp.json"), "utf8")) as {
-    mcpServers: { groveyard: { command: string; args: string[]; env: { GROVEYARD_REPO: string; GROVEYARD_AGENT_INSTRUCTIONS: string } } };
+    mcpServers: Record<string, { command: string; args: string[]; env: { GROVEYARD_REPO: string; GROVEYARD_AGENT_INSTRUCTIONS: string } }>;
   };
+  const serverName = expectedConnectServerName(repo);
+  const cursorServer = cursorConfig.mcpServers[serverName];
 
   assert.match(stdout, /Connected/);
   assert.match(stdout, /Agent instructions/);
-  assert.match(codexConfig, /\[mcp_servers\.groveyard\]/);
+  assert.match(codexConfig, new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\]`));
   assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
   assert.match(codexConfig, /GROVEYARD_AGENT_INSTRUCTIONS/);
-  assert.equal(cursorConfig.mcpServers.groveyard.command, "npx");
-  assert.deepEqual(cursorConfig.mcpServers.groveyard.args, ["-y", "@groveyard/mcp"]);
-  assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_REPO, repo);
-  assert.equal(cursorConfig.mcpServers.groveyard.env.GROVEYARD_AGENT_INSTRUCTIONS, join(repo, ".groveyard", "AGENTS.md"));
+  assert.equal(cursorServer?.command, "npx");
+  assert.deepEqual(cursorServer?.args, ["-y", "@groveyard/mcp"]);
+  assert.equal(cursorServer?.env.GROVEYARD_REPO, repo);
+  assert.equal(cursorServer?.env.GROVEYARD_AGENT_INSTRUCTIONS, join(repo, ".groveyard", "AGENTS.md"));
+});
+
+test("CLI connect adds a repo-scoped Codex server without replacing other Groveyard repos", async () => {
+  const oldRepo = await createRepo();
+  const repo = await createRepo();
+  const home = await mkdtemp(join(tmpdir(), "groveyard-home-"));
+  await mkdir(join(home, ".codex"), { recursive: true });
+  await writeFile(
+    join(home, ".codex", "config.toml"),
+    `[mcp_servers.groveyard]
+command = "npx"
+args = ["-y", "@groveyard/mcp"]
+
+[mcp_servers.groveyard.env]
+GROVEYARD_REPO = ${JSON.stringify(oldRepo)}
+GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(join(oldRepo, ".groveyard", "AGENTS.md"))}
+
+[plugins."browser@openai-bundled"]
+enabled = true
+`,
+    "utf8",
+  );
+
+  await runCli(["connect", "--repo", repo, "--yes"], {
+    env: {
+      HOME: home,
+    },
+  });
+
+  const codexConfig = await readFile(join(home, ".codex", "config.toml"), "utf8");
+  const serverName = expectedConnectServerName(repo);
+
+  assert.equal(codexConfig.match(/\[mcp_servers\.groveyard\]/g)?.length, 1);
+  assert.equal(codexConfig.match(/\[mcp_servers\.groveyard\.env\]/g)?.length, 1);
+  assert.match(codexConfig, new RegExp(escapeRegExp(oldRepo)));
+  assert.equal(codexConfig.match(new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\]`, "g"))?.length, 1);
+  assert.equal(codexConfig.match(new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\.env\]`, "g"))?.length, 1);
+  assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
+  assert.match(codexConfig, /\[plugins\."browser@openai-bundled"\]/);
+});
+
+test("CLI connect updates the same repo-scoped Codex server without duplicating env tables", async () => {
+  const oldRepo = await createRepo();
+  const repo = await createRepo();
+  const home = await mkdtemp(join(tmpdir(), "groveyard-home-"));
+  const serverName = "groveyard_custom";
+  await mkdir(join(home, ".codex"), { recursive: true });
+  await writeFile(
+    join(home, ".codex", "config.toml"),
+    `[mcp_servers.${serverName}]
+command = "npx"
+args = ["-y", "@groveyard/mcp"]
+
+[mcp_servers.${serverName}.env]
+GROVEYARD_REPO = ${JSON.stringify(oldRepo)}
+GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(join(oldRepo, ".groveyard", "AGENTS.md"))}
+
+[plugins."browser@openai-bundled"]
+enabled = true
+`,
+    "utf8",
+  );
+
+  await runCli(["connect", "--repo", repo, "--name", serverName, "--yes"], {
+    env: {
+      HOME: home,
+    },
+  });
+
+  const codexConfig = await readFile(join(home, ".codex", "config.toml"), "utf8");
+
+  assert.equal(codexConfig.match(new RegExp(String.raw`\[mcp_servers\.${serverName}\]`, "g"))?.length, 1);
+  assert.equal(codexConfig.match(new RegExp(String.raw`\[mcp_servers\.${serverName}\.env\]`, "g"))?.length, 1);
+  assert.doesNotMatch(codexConfig, new RegExp(escapeRegExp(oldRepo)));
+  assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
+  assert.match(codexConfig, /\[plugins\."browser@openai-bundled"\]/);
 });
 
 test("CLI dashboard summarizes repo, MCP config, and sessions", async () => {
@@ -390,6 +474,12 @@ async function runCli(
 
 function isExecError(error: unknown): error is Error & { code?: number | string; stdout?: string; stderr?: string } {
   return error instanceof Error && ("stdout" in error || "stderr" in error || "code" in error);
+}
+
+function expectedConnectServerName(repoRoot: string): string {
+  const repoName = repoRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? "repo";
+  const suffix = repoName.toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "repo";
+  return `groveyard_${suffix}`;
 }
 
 function escapeRegExp(value: string): string {

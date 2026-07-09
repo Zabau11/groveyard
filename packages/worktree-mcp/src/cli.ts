@@ -13,6 +13,7 @@ import type { SessionRecord } from "./sessions.js";
 type ParsedArgs = {
   command: string;
   repoPath?: string;
+  connectName?: string;
   positional: string[];
   json: boolean;
   force: boolean;
@@ -36,6 +37,7 @@ type ConnectWriteResult = AgentConfigTarget & {
 };
 
 type ConnectSnippets = {
+  serverName: string;
   codexToml: string;
   mcpJson: string;
   agentInstructionsPath: string;
@@ -172,6 +174,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
   const positional: string[] = [];
   let repoPath: string | undefined;
+  let connectName: string | undefined;
   let json = false;
   let force = false;
   let plain = false;
@@ -188,6 +191,17 @@ function parseArgs(argv: string[]): ParsedArgs {
 
     if (value?.startsWith("--repo=")) {
       repoPath = value.slice("--repo=".length);
+      continue;
+    }
+
+    if (value === "--name") {
+      connectName = rest[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (value?.startsWith("--name=")) {
+      connectName = value.slice("--name=".length);
       continue;
     }
 
@@ -219,6 +233,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     command,
     repoPath,
+    connectName,
     positional,
     json,
     force,
@@ -315,7 +330,8 @@ async function doctor(args: ParsedArgs): Promise<void> {
 
 async function connect(args: ParsedArgs): Promise<void> {
   const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
-  const snippets = createConnectSnippets(repoRoot);
+  const serverName = resolveConnectServerName(repoRoot, args.connectName);
+  const snippets = createConnectSnippets(repoRoot, serverName);
   const targets = detectAgentConfigTargets();
   const detectedTargets = targets.filter((target) => target.detected);
 
@@ -334,6 +350,7 @@ async function connect(args: ParsedArgs): Promise<void> {
   console.log(style("Detected coding agent config files and can add Groveyard for this repo.", "dim"));
   console.log("");
   console.log(`${style("Repo", "cyan")}: ${repoRoot}`);
+  console.log(`${style("MCP server", "cyan")}: ${serverName}`);
   console.log("");
 
   if (detectedTargets.length > 0) {
@@ -350,7 +367,7 @@ async function connect(args: ParsedArgs): Promise<void> {
 
   console.log("");
 
-  const writeResults = await maybeWriteDetectedConfigs(detectedTargets, repoRoot, args.yes);
+  const writeResults = await maybeWriteDetectedConfigs(detectedTargets, repoRoot, serverName, args.yes);
 
   if (writeResults.length > 0) {
     console.log(style("Connected", "bold"));
@@ -734,6 +751,7 @@ Usage:
 
 Options:
   --repo PATH   Path inside the Git repository
+  --name NAME   MCP server name for connect; defaults to groveyard_<repo>
   --json        Print JSON output for CLI commands
   --plain       Print non-interactive session rows for sessions
   --force       Overwrite files for commands that support it
@@ -752,7 +770,7 @@ async function buildDashboardReport(service: WorktreeSessionService, args: Parse
   const sessionItems = await Promise.all(rows.map((session) => summarizeSession(service, repoRoot, session)));
   const configPath = resolve(repoRoot, ".groveyard.yml");
   const configExists = existsSync(configPath);
-  const targets = await summarizeMcpTargets(detectAgentConfigTargets());
+  const targets = await summarizeMcpTargets(detectAgentConfigTargets(), repoRoot);
   const active = sessionItems.filter((session) => session.status === "active");
   const dirty = active.filter((session) => session.dirty === true);
   const clean = active.filter((session) => session.dirty === false);
@@ -885,7 +903,7 @@ function printDashboard(report: DashboardReport): void {
   }
 }
 
-async function summarizeMcpTargets(targets: AgentConfigTarget[]): Promise<DashboardMcpTarget[]> {
+async function summarizeMcpTargets(targets: AgentConfigTarget[], repoRoot: string): Promise<DashboardMcpTarget[]> {
   return Promise.all(
     targets.map(async (target) => {
       if (!target.exists) {
@@ -899,7 +917,7 @@ async function summarizeMcpTargets(targets: AgentConfigTarget[]): Promise<Dashbo
         const content = await readFile(target.path, "utf8");
         return {
           ...target,
-          configured: hasGroveyardMcpConfig(target, content),
+          configured: hasGroveyardMcpConfig(target, content, repoRoot),
         };
       } catch (error) {
         return {
@@ -912,16 +930,17 @@ async function summarizeMcpTargets(targets: AgentConfigTarget[]): Promise<Dashbo
   );
 }
 
-function hasGroveyardMcpConfig(target: AgentConfigTarget, content: string): boolean {
+function hasGroveyardMcpConfig(target: AgentConfigTarget, content: string, repoRoot: string): boolean {
   if (target.format === "toml") {
-    return /\[mcp_servers\.groveyard\]/.test(content);
+    const repoPattern = escapeRegExp(`GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`);
+    return new RegExp(String.raw`\[mcp_servers\.groveyard(?:_[A-Za-z0-9_-]+)?(?:\.env)?\][\s\S]*?${repoPattern}`).test(content);
   }
 
   try {
-    const parsed = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
-    return Boolean(parsed.mcpServers?.groveyard);
+    const parsed = JSON.parse(content) as { mcpServers?: Record<string, { env?: { GROVEYARD_REPO?: string } }> };
+    return Object.entries(parsed.mcpServers ?? {}).some(([name, server]) => isGroveyardServerName(name) && server.env?.GROVEYARD_REPO === repoRoot);
   } catch {
-    return /"groveyard"\s*:/.test(content);
+    return new RegExp(escapeRegExp(JSON.stringify(repoRoot))).test(content) && /"groveyard(?:_[A-Za-z0-9_-]+)?"\s*:/.test(content);
   }
 }
 
@@ -1019,12 +1038,12 @@ function formatCommandProfiles(commands: Record<string, string>): string {
   return names.length ? names.map((name) => style(name, "green")).join(", ") : style("none", "dim");
 }
 
-function createConnectSnippets(repoRoot: string): ConnectSnippets {
+function createConnectSnippets(repoRoot: string, serverName: string): ConnectSnippets {
   const agentInstructions = createAgentInstructionReference(repoRoot);
   const args = ["-y", "@groveyard/mcp"];
   const jsonConfig = {
     mcpServers: {
-      groveyard: {
+      [serverName]: {
         command: "npx",
         args,
         env: {
@@ -1036,12 +1055,13 @@ function createConnectSnippets(repoRoot: string): ConnectSnippets {
   };
 
   return {
+    serverName,
     codexToml: [
-      "[mcp_servers.groveyard]",
+      `[mcp_servers.${serverName}]`,
       'command = "npx"',
       'args = ["-y", "@groveyard/mcp"]',
       "",
-      "[mcp_servers.groveyard.env]",
+      `[mcp_servers.${serverName}.env]`,
       `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
       `GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(agentInstructions.path)}`,
     ].join("\n"),
@@ -1093,7 +1113,7 @@ function detectAgentConfigTargets(): AgentConfigTarget[] {
   });
 }
 
-async function maybeWriteDetectedConfigs(targets: AgentConfigTarget[], repoRoot: string, assumeYes: boolean): Promise<ConnectWriteResult[]> {
+async function maybeWriteDetectedConfigs(targets: AgentConfigTarget[], repoRoot: string, serverName: string, assumeYes: boolean): Promise<ConnectWriteResult[]> {
   if (targets.length === 0) {
     return [];
   }
@@ -1114,7 +1134,7 @@ async function maybeWriteDetectedConfigs(targets: AgentConfigTarget[], repoRoot:
         continue;
       }
 
-      await writeAgentConfig(target, repoRoot);
+      await writeAgentConfig(target, repoRoot, serverName);
       results.push({ ...target, action: target.exists ? "updated" : "created" });
     }
   } finally {
@@ -1129,30 +1149,31 @@ async function confirm(rl: ReturnType<typeof createInterface>, question: string)
   return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
 }
 
-async function writeAgentConfig(target: AgentConfigTarget, repoRoot: string): Promise<void> {
+async function writeAgentConfig(target: AgentConfigTarget, repoRoot: string, serverName: string): Promise<void> {
   await mkdir(dirname(target.path), { recursive: true });
 
   if (target.format === "toml") {
-    await writeFile(target.path, upsertCodexToml(target.exists ? await readFile(target.path, "utf8") : "", repoRoot), "utf8");
+    await writeFile(target.path, upsertCodexToml(target.exists ? await readFile(target.path, "utf8") : "", repoRoot, serverName), "utf8");
     return;
   }
 
-  await writeFile(target.path, upsertMcpJson(target.exists ? await readFile(target.path, "utf8") : "", repoRoot), "utf8");
+  await writeFile(target.path, upsertMcpJson(target.exists ? await readFile(target.path, "utf8") : "", repoRoot, serverName), "utf8");
 }
 
-function upsertCodexToml(existing: string, repoRoot: string): string {
+function upsertCodexToml(existing: string, repoRoot: string, serverName: string): string {
   const agentInstructions = createAgentInstructionReference(repoRoot);
   const block = [
-    "[mcp_servers.groveyard]",
+    `[mcp_servers.${serverName}]`,
     'command = "npx"',
     'args = ["-y", "@groveyard/mcp"]',
     "",
-    "[mcp_servers.groveyard.env]",
+    `[mcp_servers.${serverName}.env]`,
     `GROVEYARD_REPO = ${JSON.stringify(repoRoot)}`,
     `GROVEYARD_AGENT_INSTRUCTIONS = ${JSON.stringify(agentInstructions.path)}`,
   ].join("\n");
 
-  const pattern = /\n?\[mcp_servers\.groveyard\][\s\S]*?(?=\n\[mcp_servers\.|\n\[[^\]]+\]|\s*$)/;
+  const escapedServerName = escapeRegExp(serverName);
+  const pattern = new RegExp(String.raw`\n?\[mcp_servers\.${escapedServerName}\][\s\S]*?(?=\n\[(?!mcp_servers\.${escapedServerName}(?:\.|\]))[^\]]+\]|\s*$)`);
   const trimmed = existing.trimEnd();
 
   if (pattern.test(trimmed)) {
@@ -1162,12 +1183,12 @@ function upsertCodexToml(existing: string, repoRoot: string): string {
   return `${trimmed ? `${trimmed}\n\n` : ""}${block}\n`;
 }
 
-function upsertMcpJson(existing: string, repoRoot: string): string {
+function upsertMcpJson(existing: string, repoRoot: string, serverName: string): string {
   const agentInstructions = createAgentInstructionReference(repoRoot);
   const config = existing.trim() ? (JSON.parse(existing) as { mcpServers?: Record<string, unknown> }) : {};
   config.mcpServers = {
     ...config.mcpServers,
-    groveyard: {
+    [serverName]: {
       command: "npx",
       args: ["-y", "@groveyard/mcp"],
       env: {
@@ -1178,6 +1199,34 @@ function upsertMcpJson(existing: string, repoRoot: string): string {
   };
 
   return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+function resolveConnectServerName(repoRoot: string, explicitName: string | undefined): string {
+  const serverName = explicitName ?? deriveConnectServerName(repoRoot);
+
+  if (!isValidMcpServerName(serverName)) {
+    throw new Error("MCP server name must contain only letters, numbers, underscores, and hyphens.");
+  }
+
+  return serverName;
+}
+
+function deriveConnectServerName(repoRoot: string): string {
+  const repoName = repoRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? "repo";
+  const suffix = repoName.toLowerCase().replace(/[^a-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "repo";
+  return `groveyard_${suffix}`;
+}
+
+function isValidMcpServerName(serverName: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(serverName);
+}
+
+function isGroveyardServerName(serverName: string): boolean {
+  return serverName === "groveyard" || serverName.startsWith("groveyard_");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isInteractive(): boolean {

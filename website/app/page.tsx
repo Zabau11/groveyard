@@ -1,4 +1,5 @@
 import { AsciiLogo } from "./components/AsciiLogo";
+import { CopyCommand } from "./components/CopyCommand";
 
 export default function Home() {
   return (
@@ -27,32 +28,55 @@ export default function Home() {
       <section className="docs-section" id="install" aria-labelledby="install-title">
         <h2 id="install-title">Installation</h2>
         <p>Install the Groveyard MCP package in the repository where agents should work.</p>
-        <pre className="command-line">
-          <code>npm install @groveyard/mcp</code>
-          <span className="copy-icon" aria-hidden="true" />
+        <CopyCommand command="npm install @groveyard/mcp" />
+      </section>
+
+      <section className="docs-section" id="setup" aria-labelledby="setup-title">
+        <h2 id="setup-title">Setup</h2>
+        <p>Initialize the workspace once. Groveyard writes the agent contract, checks the repo, and connects MCP.</p>
+        <pre className="code-block">
+          <code>
+            <span className="token-muted">$</span> groveyard init
+            {"\n"}
+            <span className="token-key">ok</span> .groveyard.yml created
+            {"\n"}
+            <span className="token-key">ok</span> .groveyard/AGENTS.md ready
+            {"\n\n"}
+            <span className="token-muted">$</span> groveyard doctor
+            {"\n"}
+            <span className="token-key">ok</span> Git repository found
+            {"\n"}
+            <span className="token-key">ok</span> Worktree support available
+            {"\n"}
+            <span className="token-key">ok</span> Agent instructions installed
+            {"\n\n"}
+            <span className="token-muted">$</span> groveyard connect
+            {"\n"}
+            <span className="token-string">Groveyard MCP is ready for coding agents.</span>
+          </code>
         </pre>
       </section>
 
       <section className="docs-section" aria-labelledby="usage-title">
         <h2 id="usage-title">Usage</h2>
-        <p>Ask your agent to use Groveyard. The server returns the workflow context it needs to stay safe.</p>
+        <p>Give your agent a code-changing task. Groveyard creates the session contract and keeps the work isolated.</p>
         <pre className="code-block">
           <code>
             <span className="token-muted">You:</span>
             {"\n"}
-            <span className="token-string">"Create a Groveyard session for the auth refactor."</span>
+            <span className="token-string">"Refactor the auth flow and open a PR."</span>
             {"\n\n"}
-            <span className="token-muted">Groveyard gives the agent:</span>
+            <span className="token-muted">Agent:</span>
             {"\n"}
-            <span className="token-key">sessionId</span>     which session to use
+            <span className="token-key">creates</span>   a fresh Groveyard session
             {"\n"}
-            <span className="token-key">worktreePath</span>  where edits are allowed
+            <span className="token-key">edits</span>     only inside the assigned worktree
             {"\n"}
-            <span className="token-key">nextSteps</span>     read, edit, test, diff, report
+            <span className="token-key">checks</span>    status and diff before handoff
             {"\n"}
-            <span className="token-key">guardrails</span>    scoped files + approved commands
+            <span className="token-key">reports</span>   changed files, tests, and next steps
             {"\n"}
-            <span className="token-key">checklist</span>     status, diff, commit or cleanup
+            <span className="token-key">cleans</span>    completed sessions when Git proves they are done
           </code>
         </pre>
       </section>

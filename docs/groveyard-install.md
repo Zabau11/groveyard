@@ -91,16 +91,20 @@ Command profiles are allowlisted. Agents call `run_command_profile` with a profi
 
 ## MCP Client Config
 
-Prefer `groveyard connect --repo .` when possible. It writes or prints MCP config with both `GROVEYARD_REPO` and `GROVEYARD_AGENT_INSTRUCTIONS`, where `GROVEYARD_AGENT_INSTRUCTIONS` points at `.groveyard/AGENTS.md`. Add the printed instruction line to your agent's custom instructions when the client has a separate prompt/settings field.
+Prefer `groveyard connect --repo .` when possible. It writes or prints MCP config with a repo-scoped server name such as `groveyard_orchestrator`, plus both `GROVEYARD_REPO` and `GROVEYARD_AGENT_INSTRUCTIONS`, where `GROVEYARD_AGENT_INSTRUCTIONS` points at `.groveyard/AGENTS.md`. Add the printed instruction line to your agent's custom instructions when the client has a separate prompt/settings field. Use `--name <server>` to choose a stable server name explicitly.
 
 Use this server config in an MCP-capable agent after publishing:
 
 ```json
 {
   "mcpServers": {
-    "groveyard": {
+    "groveyard_orchestrator": {
       "command": "npx",
-      "args": ["-y", "@groveyard/mcp"]
+      "args": ["-y", "@groveyard/mcp"],
+      "env": {
+        "GROVEYARD_REPO": "/Users/david/Documents/orchestrator",
+        "GROVEYARD_AGENT_INSTRUCTIONS": "/Users/david/Documents/orchestrator/.groveyard/AGENTS.md"
+      }
     }
   }
 }
@@ -111,11 +115,15 @@ For local development before publishing:
 ```json
 {
   "mcpServers": {
-    "groveyard": {
+    "groveyard_orchestrator": {
       "command": "node",
       "args": [
         "/Users/david/Documents/orchestrator/packages/worktree-mcp/dist/index.js"
-      ]
+      ],
+      "env": {
+        "GROVEYARD_REPO": "/Users/david/Documents/orchestrator",
+        "GROVEYARD_AGENT_INSTRUCTIONS": "/Users/david/Documents/orchestrator/.groveyard/AGENTS.md"
+      }
     }
   }
 }
