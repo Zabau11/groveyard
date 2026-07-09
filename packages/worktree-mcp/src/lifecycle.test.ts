@@ -113,11 +113,74 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
 
   await assert.rejects(
     () => service.commitSession({ repoPath: repo, sessionId: created.id, message: "Empty commit" }),
-    /No changes to commit/,
+    /requires an active session/,
   );
 
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
   assert.equal(cleaned.status, "cleaned");
+});
+
+test("WorktreeSessionService reconciles clean committed sessions from git state", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Committed session",
+    baseBranch: "main",
+  });
+
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({
+    repoPath: repo,
+    sessionId: created.id,
+    path: "README.md",
+    content: "# Committed\n",
+  });
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  await service.commitSession({
+    repoPath: repo,
+    sessionId: created.id,
+    message: "Commit session changes",
+  });
+
+  const completed = await service.listSessions(repo);
+  assert.equal(completed[0]?.status, "completed");
+
+  const status = await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  assert.equal(status.status, "");
+
+  const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
+  assert.equal(cleaned.status, "cleaned");
+});
+
+test("WorktreeSessionService auto-cleans sessions merged into target branches", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Merged session",
+    baseBranch: "main",
+  });
+
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({
+    repoPath: repo,
+    sessionId: created.id,
+    path: "README.md",
+    content: "# Merged\n",
+  });
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  await service.commitSession({
+    repoPath: repo,
+    sessionId: created.id,
+    message: "Commit merged session",
+  });
+  await git(repo, ["merge", "--ff-only", created.branch]);
+
+  const reconciled = await service.listSessions(repo);
+  assert.equal(reconciled[0]?.status, "cleaned");
 });
 
 test("WorktreeSessionService enforces read-before-overwrite and review-before-commit", async () => {
@@ -184,7 +247,7 @@ test("WorktreeSessionService rejects active operations after cleanup", async () 
 
   await assert.rejects(
     () => service.gitStatus({ repoPath: repo, sessionId: created.id }),
-    /requires an active session/,
+    /requires an available worktree/,
   );
 });
 
@@ -324,6 +387,7 @@ function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     worktreePath: "/repo/.agent-worktrees/sess_forged",
     branch: "agent/forged",
     baseBranch: "main",
+    baseCommit: "abc123",
     taskName: "forged",
     status: "active",
     createdAt: "2026-07-07T12:00:00.000Z",

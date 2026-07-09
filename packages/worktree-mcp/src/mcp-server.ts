@@ -22,7 +22,7 @@ export const agentContract = [
   "Write only paths relative to the session worktree. Absolute paths and path escapes are rejected.",
   "Run configured command profiles with run_command_profile when validation is needed. Groveyard command profiles are the approved command surface.",
   "Before reporting completion, call git_status and git_diff for the session and summarize the changed files.",
-  "Commit only when the user asks you to commit. Clean up only when the user says the session is no longer needed.",
+  "Commit only when the user asks you to commit. Groveyard may automatically retire clean sessions when Git proves the branch is completed or merged into a configured target branch.",
 ];
 
 export const recommendedWorkflow = [
@@ -34,7 +34,7 @@ export const recommendedWorkflow = [
   "git_diff",
   "contract_status",
   "commit_session only on request",
-  "cleanup_session only on request",
+  "cleanup_session only on request or automatic Git-state reconciliation",
 ];
 
 export const completionChecklist = [
@@ -306,7 +306,7 @@ export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "bran
     "After edits, run a relevant command profile if one exists.",
     "Before your final answer, call git_status and git_diff for this session.",
     "Call contract_status to confirm the enforced checklist is clear.",
-    "Do not commit or clean up this session unless the user explicitly asks.",
+    "Do not manually commit or clean up this session unless the user explicitly asks; Groveyard may automatically retire sessions when Git proves they are done.",
   ];
 }
 

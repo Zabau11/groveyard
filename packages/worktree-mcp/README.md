@@ -46,12 +46,19 @@ Run `groveyard init` to create `.groveyard.yml` automatically. It detects common
 
 `groveyard init` also writes `.groveyard/AGENTS.md`, a repo-local agent instruction file containing the session policy, enforced contract, workflow, and completion checklist. Point coding agents at this file so every code-changing task starts with a fresh Groveyard session.
 
+Groveyard reconciles session state automatically whenever sessions are listed, inspected, or used. Clean sessions with commits become `completed`; clean sessions whose branches are already merged into a configured target branch are removed and marked `cleaned`.
+
 Repositories can also define `.groveyard.yml` manually:
 
 ```yaml
 worktreesRoot: .agent-worktrees
 branchPrefix: agent/
 allowDirtyBase: false
+autoCleanBranches:
+  - main
+  - master
+  - dev
+  - develop
 commands:
   test: npm test
   lint: npm run lint
@@ -97,6 +104,7 @@ The contract is enforced by the server, not just described in prompts:
 - Existing files must be read with `read_file` before `write_file` can overwrite them.
 - `commit_session` refuses to commit until `git_status` and `git_diff` have both run after the latest write or command profile.
 - `contract_status` reports the current checklist and required actions.
+- Session state is reconciled from Git automatically, so users do not need a separate cleanup command in the normal merged-branch path.
 
 MCP clients can also discover the same playbook through:
 

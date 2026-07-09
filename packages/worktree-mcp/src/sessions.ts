@@ -18,6 +18,7 @@ export const sessionRecordSchema = z.object({
   worktreePath: z.string().min(1),
   branch: z.string().min(1),
   baseBranch: z.string().min(1),
+  baseCommit: z.string().min(1).optional(),
   taskName: z.string().min(1),
   status: sessionStatusSchema,
   createdAt: z.string().datetime(),

@@ -95,6 +95,12 @@ type DashboardReport = {
 
 const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
 const agentInstructionsPath = join(".groveyard", "AGENTS.md");
+const groveyardAscii = `  ____                                      __
+ / ___|_ __ _____   _____ _   _  __ _ _ __ __| |
+| |  _| '__/ _ \\ \\ / / _ \\ | | |/ _\` | '__/ _\` |
+| |_| | | | (_) \\ V /  __/ |_| | (_| | | | (_| |
+ \\____|_|  \\___/ \\_/ \\___|\\__, |\\__,_|_|  \\__,_|
+                          |___/`;
 
 export async function runCli(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
@@ -378,10 +384,12 @@ async function sessions(service: WorktreeSessionService, args: ParsedArgs): Prom
   }
 
   if (rows.length === 0) {
+    printLogo();
     console.log("No Groveyard sessions found.");
     return;
   }
 
+  printLogo();
   for (const session of rows) {
     console.log(formatSessionLine(session));
   }
@@ -404,6 +412,7 @@ async function inspect(service: WorktreeSessionService, args: ParsedArgs): Promi
     return;
   }
 
+  printLogo();
   console.log(formatSessionLine(session));
   console.log(`Repo: ${session.repoPath}`);
   console.log(`Worktree: ${session.worktreePath}`);
@@ -423,6 +432,7 @@ async function clean(service: WorktreeSessionService, args: ParsedArgs): Promise
     return;
   }
 
+  printLogo();
   console.log(`Cleaned ${session.id}`);
 }
 
@@ -441,6 +451,7 @@ async function commit(service: WorktreeSessionService, args: ParsedArgs): Promis
     return;
   }
 
+  printLogo();
   console.log(`Committed ${result.commit.sha}`);
   console.log(`Branch: ${result.session.branch}`);
   console.log(`Status: ${result.status || "clean"}`);
@@ -465,6 +476,7 @@ function printJson(value: unknown): void {
 }
 
 function printHelp(): void {
+  printLogo();
   console.log(`Groveyard
 
 Usage:
@@ -730,16 +742,7 @@ function countStatusLines(status: string): number {
 }
 
 function printLogo(): void {
-  const logo = [
-    "  ____                                      __",
-    " / ___|_ __ _____   _____ _   _  __ _ _ __ __| |",
-    "| |  _| '__/ _ \\ \\ / / _ \\ | | |/ _` | '__/ _` |",
-    "| |_| | | | (_) \\ V /  __/ |_| | (_| | | | (_| |",
-    " \\____|_|  \\___/ \\_/ \\___|\\__, |\\__,_|_|  \\__,_|",
-    "                          |___/",
-  ];
-
-  for (const line of logo) {
+  for (const line of groveyardAscii.split("\n")) {
     console.log(style(line, "green"));
   }
 }
@@ -988,7 +991,17 @@ async function detectCommandProfiles(repoRoot: string): Promise<Record<string, s
 }
 
 function renderConfig(commands: Record<string, string>): string {
-  const lines = ["worktreesRoot: .agent-worktrees", "branchPrefix: agent/", "allowDirtyBase: false", "commands:"];
+  const lines = [
+    "worktreesRoot: .agent-worktrees",
+    "branchPrefix: agent/",
+    "allowDirtyBase: false",
+    "autoCleanBranches:",
+    "  - main",
+    "  - master",
+    "  - dev",
+    "  - develop",
+    "commands:",
+  ];
   const entries = Object.entries(commands);
 
   if (entries.length === 0) {

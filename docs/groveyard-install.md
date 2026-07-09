@@ -60,6 +60,8 @@ It detects common npm scripts such as `test`, `build`, `lint`, and `typecheck`, 
 
 It also writes `.groveyard/AGENTS.md` with the agent-facing session policy, enforced contract, recommended workflow, and completion checklist. Give this file to coding agents or reference it from your agent instructions so every code-changing task starts in a fresh Groveyard session.
 
+Session state is reconciled automatically when Groveyard lists, inspects, or uses sessions. A clean session branch with commits becomes `completed`; if that branch is already merged into a configured target branch, Groveyard removes the worktree and marks the session `cleaned`.
+
 `groveyard dashboard` shows the current repo branch, whether the base checkout is dirty, configured command profiles, detected MCP client configs, active session counts, and the latest sessions under the Groveyard ASCII logo.
 
 You can also create `.groveyard.yml` manually:
@@ -68,6 +70,11 @@ You can also create `.groveyard.yml` manually:
 worktreesRoot: .agent-worktrees
 branchPrefix: agent/
 allowDirtyBase: false
+autoCleanBranches:
+  - main
+  - master
+  - dev
+  - develop
 commands:
   test: npm test
   lint: npm run lint
@@ -152,6 +159,8 @@ Minimum useful flow:
 ```
 
 Groveyard enforces the agent contract at runtime. Session-scoped tools reject inactive or cleaned sessions, `write_file` refuses to overwrite an existing file until that file has been read through `read_file`, and `commit_session` refuses to commit until `git_status` and `git_diff` have both run after the latest write or command profile.
+
+Users normally should not need to manually clean sessions after merged work. Groveyard checks Git state during ordinary session reads and retires sessions when it can prove their clean branch has landed in `autoCleanBranches`.
 
 ## Human CLI
 

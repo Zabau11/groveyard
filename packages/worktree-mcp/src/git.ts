@@ -56,6 +56,74 @@ export async function getCurrentBranch(repoRoot: string): Promise<string> {
   return runGit(repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"]);
 }
 
+export async function getRefSha(repoRoot: string, ref: string): Promise<string> {
+  return runGit(repoRoot, ["rev-parse", ref]);
+}
+
+export async function gitRefExists(repoRoot: string, ref: string): Promise<boolean> {
+  try {
+    await runGit(repoRoot, ["rev-parse", "--verify", "--quiet", ref]);
+    return true;
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export async function isBranchMergedInto(repoRoot: string, branch: string, targetBranch: string): Promise<boolean> {
+  const targetRef = await resolveExistingBranchRef(repoRoot, targetBranch);
+
+  if (!targetRef) {
+    return false;
+  }
+
+  try {
+    await runGit(repoRoot, ["merge-base", "--is-ancestor", branch, targetRef]);
+    return true;
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export async function branchHasUniqueCommits(repoRoot: string, baseBranch: string, branch: string): Promise<boolean> {
+  const baseRef = await resolveExistingBranchRef(repoRoot, baseBranch);
+
+  if (!baseRef) {
+    return false;
+  }
+
+  try {
+    const count = await runGit(repoRoot, ["rev-list", "--count", `${baseRef}..${branch}`]);
+    return Number(count) > 0;
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export async function branchHasCommitsAfter(repoRoot: string, baseCommit: string, branch: string): Promise<boolean> {
+  try {
+    const count = await runGit(repoRoot, ["rev-list", "--count", `${baseCommit}..${branch}`]);
+    return Number(count) > 0;
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export async function assertCleanWorktree(repoRoot: string): Promise<void> {
   const status = await runGit(repoRoot, ["status", "--porcelain"]);
 
@@ -74,6 +142,10 @@ export async function removeGitWorktree(repoRoot: string, worktreePath: string):
 
 export async function gitStatusShort(worktreePath: string): Promise<string> {
   return runGit(worktreePath, ["status", "--short"]);
+}
+
+export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
+  return (await gitStatusShort(worktreePath)).length === 0;
 }
 
 export async function gitDiff(worktreePath: string): Promise<string> {
@@ -125,4 +197,16 @@ async function gitDiffUntrackedFile(worktreePath: string, filePath: string): Pro
 
 function isExecError(error: unknown): error is Error & { stdout?: string; stderr?: string } {
   return error instanceof Error && ("stdout" in error || "stderr" in error);
+}
+
+async function resolveExistingBranchRef(repoRoot: string, branch: string): Promise<string | null> {
+  const candidates = [branch, `origin/${branch}`];
+
+  for (const candidate of candidates) {
+    if (await gitRefExists(repoRoot, candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }

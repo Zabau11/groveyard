@@ -19,6 +19,7 @@ test("agent contract explains the safe MCP workflow", () => {
   assert.ok(agentContract.some((line) => line.includes("sessionId")));
   assert.ok(agentContract.some((line) => line.includes("git_status") && line.includes("git_diff")));
   assert.ok(agentContract.some((line) => line.includes("Commit only when the user asks")));
+  assert.ok(agentContract.some((line) => line.includes("automatically retire clean sessions")));
 
   assert.equal(recommendedWorkflow[0], "create_session");
   assert.ok(recommendedWorkflow.includes("run_command_profile when a relevant profile exists"));
@@ -41,7 +42,7 @@ test("createSessionNextSteps binds guidance to the created session", () => {
   assert.ok(nextSteps.some((line) => line.includes("/tmp/groveyard/sess_test")));
   assert.ok(nextSteps.some((line) => line.includes("agent/test")));
   assert.ok(nextSteps.some((line) => line.includes("future code-changing tasks") && line.includes("fresh Groveyard session")));
-  assert.ok(nextSteps.some((line) => line.includes("Do not commit or clean up") && line.includes("user explicitly asks")));
+  assert.ok(nextSteps.some((line) => line.includes("Do not manually commit or clean up") && line.includes("automatically retire sessions")));
 });
 
 test("agent instructions are available as MCP-native prompt and resource content", () => {

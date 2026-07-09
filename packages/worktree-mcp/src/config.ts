@@ -23,6 +23,7 @@ const configSchema = z.object({
   worktreesRoot: safeRelativePathSchema.default(".agent-worktrees"),
   branchPrefix: branchPrefixSchema.default("agent/"),
   allowDirtyBase: z.boolean().default(false),
+  autoCleanBranches: z.array(z.string().min(1)).default(["main", "master", "dev", "develop"]),
   commands: z.record(z.string().min(1)).default({}),
 });
 

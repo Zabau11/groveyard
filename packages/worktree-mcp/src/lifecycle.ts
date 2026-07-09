@@ -4,12 +4,17 @@ import { join, resolve, sep } from "node:path";
 
 import {
   assertCleanWorktree,
+  branchHasCommitsAfter,
+  branchHasUniqueCommits,
   type GitCommitResult,
   commitAllChanges,
   createGitWorktree,
   getCurrentBranch,
+  getRefSha,
   gitDiff,
   gitStatusShort,
+  isBranchMergedInto,
+  isWorktreeClean,
   removeGitWorktree,
   resolveRepoRoot,
 } from "./git.js";
@@ -76,6 +81,7 @@ export class WorktreeSessionService {
     const id = createSessionId();
     const suffix = id.replace(/^sess_/, "");
     const baseBranch = input.baseBranch ?? (await getCurrentBranch(repoRoot));
+    const baseCommit = await getRefSha(repoRoot, baseBranch);
     const branch = `${config.branchPrefix}${taskSlug}-${suffix}`;
     const worktreePath = join(repoRoot, config.worktreesRoot, id);
     const now = new Date().toISOString();
@@ -89,6 +95,7 @@ export class WorktreeSessionService {
       worktreePath,
       branch,
       baseBranch,
+      baseCommit,
       taskName: input.taskName,
       status: "active",
       createdAt: now,
@@ -107,11 +114,13 @@ export class WorktreeSessionService {
 
   async listSessions(repoPath?: string): Promise<SessionRecord[]> {
     const repoRoot = await this.resolveRepo(repoPath);
+    await this.reconcileSessions(repoRoot);
     return this.storeForRepo(repoRoot).list();
   }
 
   async getSession(input: SessionLookupInput): Promise<SessionRecord> {
     const repoRoot = await this.resolveRepo(input.repoPath);
+    await this.reconcileSessions(repoRoot);
     return this.storeForRepo(repoRoot).get(input.sessionId);
   }
 
@@ -121,7 +130,7 @@ export class WorktreeSessionService {
     const store = this.storeForRepo(repoRoot);
     const session = await store.get(input.sessionId);
 
-    assertActiveSession(session, "cleanup_session");
+    assertCleanableSession(session, "cleanup_session");
     assertOwnedWorktreePath(repoRoot, session.worktreePath, config.worktreesRoot);
     await removeGitWorktree(repoRoot, session.worktreePath);
 
@@ -132,7 +141,8 @@ export class WorktreeSessionService {
   }
 
   async gitStatus(input: SessionLookupInput): Promise<{ session: SessionRecord; status: string }> {
-    const session = await this.getActiveSession(input, "git_status");
+    const session = await this.getSession(input);
+    assertWorktreeAvailable(session, "git_status");
     const status = await gitStatusShort(session.worktreePath);
     const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
       ...contract,
@@ -146,7 +156,8 @@ export class WorktreeSessionService {
   }
 
   async gitDiff(input: SessionLookupInput): Promise<{ session: SessionRecord; diff: string }> {
-    const session = await this.getActiveSession(input, "git_diff");
+    const session = await this.getSession(input);
+    assertWorktreeAvailable(session, "git_diff");
     const diff = await gitDiff(session.worktreePath);
     const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
       ...contract,
@@ -269,6 +280,28 @@ export class WorktreeSessionService {
     return new JsonSessionStore(join(repoRoot, metadataDirectory, "sessions.json"));
   }
 
+  private async reconcileSessions(repoRoot: string): Promise<void> {
+    const store = this.storeForRepo(repoRoot);
+    const [config, sessions] = await Promise.all([loadConfig(repoRoot), store.list()]);
+
+    for (const session of sessions) {
+      if (session.status !== "active") {
+        continue;
+      }
+
+      const nextStatus = await reconcileSessionStatus(repoRoot, session, config.autoCleanBranches);
+
+      if (nextStatus === session.status) {
+        continue;
+      }
+
+      await store.update(session.id, (current) => ({
+        ...current,
+        status: nextStatus,
+      }));
+    }
+  }
+
   private async getActiveSession(input: SessionLookupInput, toolName: string): Promise<SessionRecord> {
     const session = await this.getSession(input);
     assertActiveSession(session, toolName);
@@ -305,6 +338,36 @@ export class WorktreeSessionService {
   }
 }
 
+async function reconcileSessionStatus(repoRoot: string, session: SessionRecord, autoCleanBranches: string[]): Promise<SessionRecord["status"]> {
+  if (!(await isWorktreeClean(session.worktreePath))) {
+    return "active";
+  }
+
+  if (!session.baseCommit) {
+    for (const targetBranch of autoCleanBranches) {
+      if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+        await removeGitWorktree(repoRoot, session.worktreePath);
+        return "cleaned";
+      }
+    }
+
+    return (await branchHasUniqueCommits(repoRoot, session.baseBranch, session.branch)) ? "completed" : "active";
+  }
+
+  if (!(await branchHasCommitsAfter(repoRoot, session.baseCommit, session.branch))) {
+    return "active";
+  }
+
+  for (const targetBranch of autoCleanBranches) {
+    if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+      await removeGitWorktree(repoRoot, session.worktreePath);
+      return "cleaned";
+    }
+  }
+
+  return "completed";
+}
+
 export function slugify(value: string): string {
   const slug = value
     .toLowerCase()
@@ -327,6 +390,18 @@ export function assertOwnedWorktreePath(repoRoot: string, worktreePath: string, 
 export function assertActiveSession(session: SessionRecord, toolName: string): void {
   if (session.status !== "active") {
     throw new Error(`Contract violation: ${toolName} requires an active session, but ${session.id} is ${session.status}.`);
+  }
+}
+
+export function assertWorktreeAvailable(session: SessionRecord, toolName: string): void {
+  if (session.status === "cleaned") {
+    throw new Error(`Contract violation: ${toolName} requires an available worktree, but ${session.id} is cleaned.`);
+  }
+}
+
+export function assertCleanableSession(session: SessionRecord, toolName: string): void {
+  if (session.status !== "active" && session.status !== "completed") {
+    throw new Error(`Contract violation: ${toolName} requires an active or completed session, but ${session.id} is ${session.status}.`);
   }
 }
 

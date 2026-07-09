@@ -13,6 +13,7 @@ test("loadConfig returns conservative defaults without a config file", async () 
     worktreesRoot: ".agent-worktrees",
     branchPrefix: "agent/",
     allowDirtyBase: false,
+    autoCleanBranches: ["main", "master", "dev", "develop"],
     commands: {},
   });
 });
@@ -34,6 +35,7 @@ commands:
     worktreesRoot: ".custom-worktrees",
     branchPrefix: "codex/",
     allowDirtyBase: true,
+    autoCleanBranches: ["main", "master", "dev", "develop"],
     commands: {
       test: "npm test",
     },

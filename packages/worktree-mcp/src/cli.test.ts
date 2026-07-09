@@ -47,6 +47,15 @@ test("CLI doctor prints a readable non-JSON report", async () => {
   assert.match(stdout, /groveyard init/);
 });
 
+test("CLI terminal banner matches the website ASCII art", async () => {
+  const repo = await createRepo();
+  const { stdout } = await runCli(["sessions", "--repo", repo]);
+
+  assert.match(stdout, /____/);
+  assert.match(stdout, /\\____\|_\|/);
+  assert.match(stdout, /No Groveyard sessions found/);
+});
+
 test("CLI connect prints MCP config snippets", async () => {
   const repo = await createRepo();
   const { stdout } = await runCli(["connect", "--repo", repo]);
