@@ -220,6 +220,15 @@ test("CLI sessions, inspect, and clean operate on persisted sessions", async () 
   assert.equal(inspect.session.id, session.id);
   assert.match(inspect.status, /\?\? changed\.txt/);
 
+  const humanInspect = await runCli(["inspect", session.id, "--repo", repo]);
+  assert.match(humanInspect.stdout, /Handoff report/);
+  assert.match(humanInspect.stdout, /Changed files/);
+  assert.match(humanInspect.stdout, /changed\.txt/);
+
+  const plainSessions = await runCli(["sessions", "--repo", repo, "--plain"]);
+  assert.match(plainSessions.stdout, new RegExp(escapeRegExp(session.id)));
+  assert.match(plainSessions.stdout, /CLI smoke/);
+
   const committed = await runCli(["commit", session.id, "-m", "CLI commit", "--repo", repo, "--json"]);
   const commit = JSON.parse(committed.stdout) as { commit: { sha: string; message: string }; status: string };
   assert.match(commit.commit.sha, /^[a-f0-9]{40}$/);

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { loadConfig } from "./config.js";
-import { getCurrentBranch, gitStatusShort, resolveRepoRoot } from "./git.js";
+import { getCurrentBranch, gitStatusShort, resolveRepoRoot, runGit } from "./git.js";
 import { WorktreeSessionService } from "./lifecycle.js";
 import { renderAgentInstructions } from "./mcp-server.js";
 import type { SessionRecord } from "./sessions.js";
@@ -16,6 +16,7 @@ type ParsedArgs = {
   positional: string[];
   json: boolean;
   force: boolean;
+  plain: boolean;
   yes: boolean;
 };
 
@@ -93,6 +94,22 @@ type DashboardReport = {
   next: string[];
 };
 
+type HandoffReport = {
+  session: SessionRecord;
+  state: {
+    label: string;
+    color: StyleColor;
+    summary: string;
+  };
+  statusText: string;
+  changedFiles: string[];
+  contract: {
+    readyToCommit: boolean;
+    requiredActions: string[];
+  };
+  next: string[];
+};
+
 const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
 const agentInstructionsPath = join(".groveyard", "AGENTS.md");
 const groveyardAscii = `  ____                                      __
@@ -157,6 +174,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let repoPath: string | undefined;
   let json = false;
   let force = false;
+  let plain = false;
   let yes = false;
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -183,6 +201,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === "--plain") {
+      plain = true;
+      continue;
+    }
+
     if (value === "--yes" || value === "-y") {
       yes = true;
       continue;
@@ -199,6 +222,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     positional,
     json,
     force,
+    plain,
     yes,
   };
 }
@@ -389,22 +413,44 @@ async function sessions(service: WorktreeSessionService, args: ParsedArgs): Prom
     return;
   }
 
-  printLogo();
-  for (const session of rows) {
-    console.log(formatSessionLine(session));
+  if (!isInteractive() || args.plain) {
+    printLogo();
+    for (const session of rows) {
+      console.log(formatSessionLine(session));
+    }
+    return;
   }
+
+  printLogo();
+  console.log(style("Sessions", "bold"));
+  console.log(style("Pick a session to view its handoff report.", "dim"));
+  console.log("");
+
+  rows.forEach((session, index) => {
+    console.log(formatSessionMenuLine(session, index));
+  });
+
+  console.log("");
+  const selected = await promptForSession(rows);
+
+  if (!selected) {
+    console.log(style("No session selected.", "dim"));
+    return;
+  }
+
+  console.log("");
+  printHandoffReport(await buildHandoffReport(service, args, selected));
 }
 
 async function inspect(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
   const sessionId = requireSessionId(args);
-  const [session, status] = await Promise.all([
-    service.getSession({ repoPath: args.repoPath, sessionId }),
-    service.gitStatus({ repoPath: args.repoPath, sessionId }),
-  ]);
+  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  const session = await service.getSession({ repoPath: repoRoot, sessionId });
+  const status = await readSessionStatus(service, repoRoot, session);
 
   const result = {
     session,
-    status: status.status,
+    status: status.statusText,
   };
 
   if (args.json) {
@@ -413,14 +459,7 @@ async function inspect(service: WorktreeSessionService, args: ParsedArgs): Promi
   }
 
   printLogo();
-  console.log(formatSessionLine(session));
-  console.log(`Repo: ${session.repoPath}`);
-  console.log(`Worktree: ${session.worktreePath}`);
-  console.log(`Branch: ${session.branch}`);
-  console.log(`Base: ${session.baseBranch}`);
-  console.log(`Updated: ${session.updatedAt}`);
-  console.log("Status:");
-  console.log(status.status || "  clean");
+  printHandoffReport(await buildHandoffReport(service, args, session));
 }
 
 async function clean(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
@@ -471,6 +510,209 @@ function formatSessionLine(session: SessionRecord): string {
   return `${session.id}  ${session.status.padEnd(9)}  ${session.branch}  ${session.taskName}`;
 }
 
+function formatSessionMenuLine(session: SessionRecord, index: number): string {
+  const statusColor = sessionStatusColor(session.status);
+  const task = session.taskName.length > 32 ? `${session.taskName.slice(0, 29)}...` : session.taskName;
+  const branch = session.branch.length > 46 ? `${session.branch.slice(0, 43)}...` : session.branch;
+
+  return [
+    style(String(index + 1).padStart(2), "cyan"),
+    style(session.status.padEnd(9), statusColor),
+    task.padEnd(34),
+    style(branch, "dim"),
+  ].join("  ");
+}
+
+async function promptForSession(rows: SessionRecord[]): Promise<SessionRecord | null> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  try {
+    const answer = await rl.question(`${style("Session number", "cyan")} ${style("[Enter to cancel]", "dim")}: `);
+    const value = answer.trim();
+
+    if (!value) {
+      return null;
+    }
+
+    const index = Number(value);
+
+    if (!Number.isInteger(index) || index < 1 || index > rows.length) {
+      console.log(style("Invalid selection.", "yellow"));
+      return null;
+    }
+
+    return rows[index - 1] ?? null;
+  } finally {
+    rl.close();
+  }
+}
+
+async function buildHandoffReport(service: WorktreeSessionService, args: ParsedArgs, session: SessionRecord): Promise<HandoffReport> {
+  const repoRoot = await resolveRepoRoot(resolve(args.repoPath ?? process.cwd()));
+  const contract = await service.contractStatus({ repoPath: repoRoot, sessionId: session.id });
+  const status = await readSessionStatus(service, repoRoot, session);
+  const changedFiles = status.statusText ? parseChangedFiles(status.statusText) : await branchChangedFiles(repoRoot, session);
+  const state = handoffState(session, status.statusText, changedFiles);
+  const requiredActions = session.status === "active" ? contract.requiredActions : [];
+
+  return {
+    session,
+    state,
+    statusText: status.statusText,
+    changedFiles,
+    contract: {
+      readyToCommit: session.status === "active" ? contract.readyToCommit : true,
+      requiredActions,
+    },
+    next: handoffNextSteps(session, status.statusText, changedFiles, requiredActions),
+  };
+}
+
+async function readSessionStatus(
+  service: WorktreeSessionService,
+  repoRoot: string,
+  session: SessionRecord,
+): Promise<{ statusText: string; error?: string }> {
+  if (session.status === "cleaned") {
+    return { statusText: "" };
+  }
+
+  try {
+    const status = await service.gitStatus({ repoPath: repoRoot, sessionId: session.id });
+    return { statusText: status.status };
+  } catch (error) {
+    return {
+      statusText: "",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function branchChangedFiles(repoRoot: string, session: SessionRecord): Promise<string[]> {
+  const base = session.baseCommit ?? session.baseBranch;
+
+  try {
+    const output = await runGit(repoRoot, ["diff", "--name-status", `${base}..${session.branch}`]);
+    return parseChangedFiles(output);
+  } catch {
+    return [];
+  }
+}
+
+function parseChangedFiles(statusText: string): string[] {
+  return statusText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(/\s+/).slice(1).join(" ") || line);
+}
+
+function handoffState(session: SessionRecord, statusText: string, changedFiles: string[]): HandoffReport["state"] {
+  if (session.status === "cleaned") {
+    return {
+      label: "retired",
+      color: "dim",
+      summary: "merged or cleaned; no worktree remains",
+    };
+  }
+
+  if (session.status === "completed") {
+    return {
+      label: "ready",
+      color: "green",
+      summary: changedFiles.length > 0 ? "clean branch with committed changes" : "clean branch",
+    };
+  }
+
+  if (statusText.length > 0) {
+    return {
+      label: "needs review",
+      color: "yellow",
+      summary: `${changedFiles.length} changed ${changedFiles.length === 1 ? "file" : "files"}`,
+    };
+  }
+
+  return {
+    label: "active",
+    color: "green",
+    summary: "clean worktree; no pending file changes",
+  };
+}
+
+function handoffNextSteps(session: SessionRecord, statusText: string, changedFiles: string[], requiredActions: string[]): string[] {
+  if (session.status === "cleaned") {
+    return ["No action needed. This session has been retired."];
+  }
+
+  if (requiredActions.length > 0) {
+    return requiredActions;
+  }
+
+  if (statusText.length > 0) {
+    return ["Review the changed files.", "Run a relevant command profile if one exists.", "Commit only when you are ready to keep the branch."];
+  }
+
+  if (session.status === "completed") {
+    return ["Open a PR or merge the session branch.", "Groveyard will retire the session after it lands in an auto-clean branch."];
+  }
+
+  if (changedFiles.length > 0) {
+    return ["Open a PR or merge the session branch."];
+  }
+
+  return ["Continue the task in this session, or clean it if it is no longer needed."];
+}
+
+function printHandoffReport(report: HandoffReport): void {
+  console.log(style("Handoff report", "bold"));
+  console.log(`${style("Session", "cyan")}: ${report.session.id}`);
+  console.log(`${style("Task", "cyan")}: ${report.session.taskName}`);
+  console.log(`${style("State", "cyan")}: ${style(report.state.label, report.state.color)} ${style(`(${report.state.summary})`, "dim")}`);
+  console.log(`${style("Branch", "cyan")}: ${report.session.branch}`);
+  console.log(`${style("Base", "cyan")}: ${report.session.baseBranch}`);
+  console.log(`${style("Worktree", "cyan")}: ${report.session.status === "cleaned" ? style("cleaned", "dim") : report.session.worktreePath}`);
+  console.log("");
+
+  console.log(style("Changed files", "bold"));
+  if (report.changedFiles.length === 0) {
+    console.log(`  ${style("none", "dim")}`);
+  } else {
+    for (const file of report.changedFiles.slice(0, 20)) {
+      console.log(`  ${file}`);
+    }
+
+    if (report.changedFiles.length > 20) {
+      console.log(`  ${style(`+${report.changedFiles.length - 20} more`, "dim")}`);
+    }
+  }
+
+  console.log("");
+  console.log(style("Contract", "bold"));
+  console.log(`  ${report.contract.readyToCommit ? style("ready", "green") : style("needs attention", "yellow")}`);
+  for (const action of report.contract.requiredActions) {
+    console.log(`  ${style("-", "yellow")} ${action}`);
+  }
+
+  console.log("");
+  console.log(style("Next", "bold"));
+  for (const step of report.next) {
+    console.log(`  ${style("-", "green")} ${step}`);
+  }
+}
+
+function sessionStatusColor(status: SessionRecord["status"]): StyleColor {
+  switch (status) {
+    case "active":
+      return "green";
+    case "completed":
+      return "cyan";
+    case "failed":
+      return "red";
+    case "cleaned":
+      return "dim";
+  }
+}
+
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
@@ -493,6 +735,7 @@ Usage:
 Options:
   --repo PATH   Path inside the Git repository
   --json        Print JSON output for CLI commands
+  --plain       Print non-interactive session rows for sessions
   --force       Overwrite files for commands that support it
   --yes, -y     Confirm prompts for commands that support it
 `);
