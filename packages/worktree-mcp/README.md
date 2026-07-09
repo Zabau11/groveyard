@@ -43,6 +43,8 @@ Use `groveyard connect` to detect Codex, Claude Desktop, and Cursor config files
 
 Run `groveyard init` to create `.groveyard.yml` automatically. It detects common npm scripts, turns them into safe command profiles, and adds Groveyard's generated folders to `.gitignore`. In an interactive terminal, `init` and `doctor` use small spinners and colored output; in CI or JSON mode, they stay plain.
 
+`groveyard init` also writes `.groveyard/AGENTS.md`, a repo-local agent instruction file containing the session policy, enforced contract, workflow, and completion checklist. Point coding agents at this file so every code-changing task starts with a fresh Groveyard session.
+
 Repositories can also define `.groveyard.yml` manually:
 
 ```yaml
@@ -86,7 +88,7 @@ Tool responses use a consistent JSON envelope:
 }
 ```
 
-`server_info` returns the recommended agent workflow, the Groveyard agent contract, and a completion checklist. `create_session` also returns session-specific next steps so coding agents know to work only inside the returned `worktreePath`, use the returned `sessionId`, inspect `git_status` and `git_diff`, and avoid committing or cleaning up unless the user asks.
+`server_info` returns the recommended agent workflow, the Groveyard agent contract, and a completion checklist. The contract tells agents to create a fresh Groveyard session for every code-changing task, while skipping session creation for read-only questions, explanations, planning, status checks, and reviews that will not modify files. `create_session` also returns session-specific next steps so coding agents know to work only inside the returned `worktreePath`, use the returned `sessionId`, inspect `git_status` and `git_diff`, and avoid committing or cleaning up unless the user asks.
 
 The contract is enforced by the server, not just described in prompts:
 

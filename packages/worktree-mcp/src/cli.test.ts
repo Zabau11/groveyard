@@ -227,8 +227,14 @@ test("CLI init creates config from package scripts", async () => {
   );
 
   const result = await runCli(["init", "--repo", repo, "--json"]);
-  const report = JSON.parse(result.stdout) as { status: string; commands: Record<string, string>; gitignore: { added: string[] } };
+  const report = JSON.parse(result.stdout) as {
+    status: string;
+    commands: Record<string, string>;
+    agentInstructions: { path: string };
+    gitignore: { added: string[] };
+  };
   const config = await readFile(join(repo, ".groveyard.yml"), "utf8");
+  const agentInstructions = await readFile(join(repo, ".groveyard", "AGENTS.md"), "utf8");
   const gitignore = await readFile(join(repo, ".gitignore"), "utf8");
 
   assert.equal(report.status, "created");
@@ -238,8 +244,13 @@ test("CLI init creates config from package scripts", async () => {
     lint: "npm run lint",
     typecheck: "npm run typecheck",
   });
+  assert.equal(report.agentInstructions.path, join(repo, ".groveyard", "AGENTS.md"));
   assert.deepEqual(report.gitignore.added, [".agent-worktrees/", ".groveyard/"]);
   assert.match(config, /commands:\n  test: npm test\n  build: npm run build\n  lint: npm run lint\n  typecheck: npm run typecheck/);
+  assert.match(agentInstructions, /# Groveyard Agent Instructions/);
+  assert.match(agentInstructions, /every code-changing task/);
+  assert.match(agentInstructions, /create_session/);
+  assert.match(agentInstructions, /contract_status/);
   assert.match(gitignore, /# Groveyard\n\.agent-worktrees\/\n\.groveyard\//);
 });
 

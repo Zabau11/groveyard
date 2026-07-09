@@ -7,6 +7,7 @@ import { createInterface } from "node:readline/promises";
 import { loadConfig } from "./config.js";
 import { getCurrentBranch, gitStatusShort, resolveRepoRoot } from "./git.js";
 import { WorktreeSessionService } from "./lifecycle.js";
+import { renderAgentInstructions } from "./mcp-server.js";
 import type { SessionRecord } from "./sessions.js";
 
 type ParsedArgs = {
@@ -86,6 +87,7 @@ type DashboardReport = {
 };
 
 const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
+const agentInstructionsPath = join(".groveyard", "AGENTS.md");
 
 export async function runCli(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
@@ -205,12 +207,14 @@ async function init(args: ParsedArgs): Promise<void> {
 
   const commands = await withSpinner("Detecting package scripts", () => detectCommandProfiles(repoRoot), args.json);
   await withSpinner("Writing .groveyard.yml", () => writeFile(configPath, renderConfig(commands), "utf8"), args.json);
+  const agentInstructions = await withSpinner("Writing agent instructions", () => writeAgentInstructions(repoRoot), args.json);
   const gitignore = await withSpinner("Updating .gitignore", () => ensureGroveyardGitignore(repoRoot), args.json);
 
   const report = {
     status: "created",
     repoRoot,
     configPath,
+    agentInstructions,
     commands,
     gitignore,
   };
@@ -226,6 +230,7 @@ async function init(args: ParsedArgs): Promise<void> {
   console.log(`${style("Branch prefix", "cyan")}: agent/`);
   console.log(`${style("Dirty base", "cyan")}: rejected`);
   console.log(`${style("Command profiles", "cyan")}: ${formatCommandProfiles(commands)}`);
+  console.log(`${style("Agent instructions", "cyan")}: ${agentInstructions.path}`);
   console.log(`${style("Ignored", "cyan")}: ${groveyardIgnoreEntries.join(", ")}`);
   console.log("");
   console.log(style("Next", "bold"));
@@ -964,6 +969,16 @@ function renderConfig(commands: Record<string, string>): string {
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+async function writeAgentInstructions(repoRoot: string): Promise<{ path: string }> {
+  const outputPath = join(repoRoot, agentInstructionsPath);
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, renderAgentInstructions("code-changing tasks in this repository"), "utf8");
+
+  return {
+    path: outputPath,
+  };
 }
 
 async function ensureGroveyardGitignore(repoRoot: string): Promise<{ path: string; added: string[]; entries: string[] }> {

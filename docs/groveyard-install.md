@@ -58,6 +58,8 @@ groveyard dashboard
 
 It detects common npm scripts such as `test`, `build`, `lint`, and `typecheck`, then writes `.groveyard.yml`.
 
+It also writes `.groveyard/AGENTS.md` with the agent-facing session policy, enforced contract, recommended workflow, and completion checklist. Give this file to coding agents or reference it from your agent instructions so every code-changing task starts in a fresh Groveyard session.
+
 `groveyard dashboard` shows the current repo branch, whether the base checkout is dirty, configured command profiles, detected MCP client configs, active session counts, and the latest sessions under the Groveyard ASCII logo.
 
 You can also create `.groveyard.yml` manually:
@@ -115,6 +117,8 @@ If the client supports setting a working directory, set it to the repository you
 Important: `repoPath` is resolved by the Groveyard MCP server process, not by the agent process making the tool call. For normal local MCP use, run Groveyard as a stdio server through `npx -y @groveyard/mcp` with the server `cwd` set to your repository, set `GROVEYARD_REPO`, or pass an absolute path that exists on the same machine/container where Groveyard is running. If an MCP host runs tools in a separate remote sandbox, mount/clone the repository into that server environment first.
 
 ## First Agent Workflow
+
+Groveyard's default policy is implementation-mode isolation: create a fresh session for every code-changing task before reading, writing, running project commands, committing, or reporting implementation work. Do not create a session for read-only questions, explanations, planning, status checks, or reviews that will not modify files.
 
 The agent should call tools in this order:
 

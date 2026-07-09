@@ -8,10 +8,13 @@ import {
   instructionsResourceUri,
   renderAgentInstructions,
   recommendedWorkflow,
+  sessionPolicy,
   workflowPromptName,
 } from "./mcp-server.js";
 
 test("agent contract explains the safe MCP workflow", () => {
+  assert.ok(sessionPolicy.some((line) => line.includes("every code-changing task") && line.includes("create_session")));
+  assert.ok(sessionPolicy.some((line) => line.includes("read-only")));
   assert.ok(agentContract.some((line) => line.includes("worktreePath")));
   assert.ok(agentContract.some((line) => line.includes("sessionId")));
   assert.ok(agentContract.some((line) => line.includes("git_status") && line.includes("git_diff")));
@@ -37,6 +40,7 @@ test("createSessionNextSteps binds guidance to the created session", () => {
   assert.ok(nextSteps.some((line) => line.includes("sess_test")));
   assert.ok(nextSteps.some((line) => line.includes("/tmp/groveyard/sess_test")));
   assert.ok(nextSteps.some((line) => line.includes("agent/test")));
+  assert.ok(nextSteps.some((line) => line.includes("future code-changing tasks") && line.includes("fresh Groveyard session")));
   assert.ok(nextSteps.some((line) => line.includes("Do not commit or clean up") && line.includes("user explicitly asks")));
 });
 
@@ -47,6 +51,8 @@ test("agent instructions are available as MCP-native prompt and resource content
   assert.equal(workflowPromptName, "groveyard_session_workflow");
   assert.match(instructions, /# Groveyard Agent Instructions/);
   assert.match(instructions, /improve the website hero/);
+  assert.match(instructions, /## Session Policy/);
+  assert.match(instructions, /every code-changing task/);
   assert.match(instructions, /create_session/);
   assert.match(instructions, /git_status/);
   assert.match(instructions, /git_diff/);

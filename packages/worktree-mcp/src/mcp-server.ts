@@ -9,7 +9,13 @@ export const mcpServerVersion = "0.1.10";
 export const instructionsResourceUri = "groveyard://instructions";
 export const workflowPromptName = "groveyard_session_workflow";
 
+export const sessionPolicy = [
+  "For every code-changing task, first call create_session before reading, writing, running project commands, committing, or reporting implementation work.",
+  "Do not create a session for read-only questions, explanations, planning, status checks, or reviews that will not modify files.",
+];
+
 export const agentContract = [
+  ...sessionPolicy,
   "Work only inside the worktreePath returned by create_session. Treat the user's base checkout as read-only context.",
   "Use the sessionId returned by create_session for every session-scoped Groveyard tool call.",
   "Read files or list directories before writing. Do not guess file contents.",
@@ -43,7 +49,10 @@ export function renderAgentInstructions(taskName = "the user's task"): string {
   return [
     "# Groveyard Agent Instructions",
     "",
-    `Use Groveyard to isolate ${taskName} in a registered Git worktree session.`,
+    `Use Groveyard to isolate ${taskName} in a registered Git worktree session whenever the task may change code.`,
+    "",
+    "## Session Policy",
+    ...sessionPolicy.map((line) => `- ${line}`),
     "",
     "## Contract",
     ...agentContract.map((line) => `- ${line}`),
@@ -125,12 +134,13 @@ export async function startMcpServer(): Promise<void> {
         workflow: recommendedWorkflow,
         agentContract,
         completionChecklist,
+        sessionPolicy,
       }),
   );
 
   server.tool(
     "create_session",
-    "Create an isolated Git worktree session for a coding task. Call this before reading, writing, running commands, or reporting code changes. Use the returned worktreePath as the only writable workspace for the task.",
+    "Create an isolated Git worktree session for a coding task. For every code-changing task, call this before reading, writing, running commands, committing, or reporting implementation work. Use the returned worktreePath as the only writable workspace for the task.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       taskName: z.string().min(1).describe("Short human-readable task name for the session."),
@@ -291,6 +301,7 @@ export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "bran
     `Work only inside ${session.worktreePath}.`,
     `Keep changes on branch ${session.branch}.`,
     "Start by listing or reading the files relevant to the task.",
+    "For future code-changing tasks, create a fresh Groveyard session before implementation work begins.",
     "Call read_file before overwriting any existing file.",
     "After edits, run a relevant command profile if one exists.",
     "Before your final answer, call git_status and git_diff for this session.",
