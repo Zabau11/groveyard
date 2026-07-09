@@ -27,6 +27,7 @@ import {
   UnknownCommandProfileError,
   runCommandProfile as executeCommandProfile,
 } from "./command-runner.js";
+import { terminateProcessesInWorktree } from "./process-cleanup.js";
 
 const metadataDirectory = ".groveyard";
 
@@ -132,6 +133,7 @@ export class WorktreeSessionService {
 
     assertCleanableSession(session, "cleanup_session");
     assertOwnedWorktreePath(repoRoot, session.worktreePath, config.worktreesRoot);
+    await terminateProcessesInWorktree(session.worktreePath);
     await removeGitWorktree(repoRoot, session.worktreePath);
 
     return store.update(input.sessionId, (current) => ({
@@ -256,11 +258,15 @@ export class WorktreeSessionService {
     }
 
     const commit = await commitAllChanges(session.worktreePath, input.message);
+    const status = await gitStatusShort(session.worktreePath);
+    const completedSession = status
+      ? session
+      : await this.completeSession(input.repoPath, input.sessionId, session.worktreePath);
 
     return {
-      session,
+      session: completedSession,
       commit,
-      status: await gitStatusShort(session.worktreePath),
+      status,
     };
   }
 
@@ -285,6 +291,16 @@ export class WorktreeSessionService {
     const [config, sessions] = await Promise.all([loadConfig(repoRoot), store.list()]);
 
     for (const session of sessions) {
+      if (session.status === "completed" && (await shouldAutoCleanCompletedSession(repoRoot, session, config.autoCleanBranches))) {
+        await terminateProcessesInWorktree(session.worktreePath);
+        await removeGitWorktree(repoRoot, session.worktreePath);
+        await store.update(session.id, (current) => ({
+          ...current,
+          status: "cleaned",
+        }));
+        continue;
+      }
+
       if (session.status !== "active") {
         continue;
       }
@@ -320,6 +336,16 @@ export class WorktreeSessionService {
     }));
   }
 
+  private async completeSession(repoPath: string | undefined, sessionId: string, worktreePath: string): Promise<SessionRecord> {
+    const repoRoot = await this.resolveRepo(repoPath);
+    await terminateProcessesInWorktree(worktreePath);
+
+    return this.storeForRepo(repoRoot).update(sessionId, (current) => ({
+      ...current,
+      status: "completed",
+    }));
+  }
+
   private async assertExistingFileWasRead(session: SessionRecord, userPath: string): Promise<void> {
     try {
       const existingTarget = await resolveExistingSessionPath(session.worktreePath, userPath);
@@ -346,12 +372,18 @@ async function reconcileSessionStatus(repoRoot: string, session: SessionRecord, 
   if (!session.baseCommit) {
     for (const targetBranch of autoCleanBranches) {
       if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+        await terminateProcessesInWorktree(session.worktreePath);
         await removeGitWorktree(repoRoot, session.worktreePath);
         return "cleaned";
       }
     }
 
-    return (await branchHasUniqueCommits(repoRoot, session.baseBranch, session.branch)) ? "completed" : "active";
+    if (await branchHasUniqueCommits(repoRoot, session.baseBranch, session.branch)) {
+      await terminateProcessesInWorktree(session.worktreePath);
+      return "completed";
+    }
+
+    return "active";
   }
 
   if (!(await branchHasCommitsAfter(repoRoot, session.baseCommit, session.branch))) {
@@ -360,12 +392,24 @@ async function reconcileSessionStatus(repoRoot: string, session: SessionRecord, 
 
   for (const targetBranch of autoCleanBranches) {
     if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+      await terminateProcessesInWorktree(session.worktreePath);
       await removeGitWorktree(repoRoot, session.worktreePath);
       return "cleaned";
     }
   }
 
+  await terminateProcessesInWorktree(session.worktreePath);
   return "completed";
+}
+
+async function shouldAutoCleanCompletedSession(repoRoot: string, session: SessionRecord, autoCleanBranches: string[]): Promise<boolean> {
+  for (const targetBranch of autoCleanBranches) {
+    if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function slugify(value: string): string {

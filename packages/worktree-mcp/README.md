@@ -46,7 +46,7 @@ Run `groveyard init` to create `.groveyard.yml` automatically. It detects common
 
 `groveyard init` also writes `.groveyard/AGENTS.md`, a repo-local agent instruction file containing the session policy, enforced contract, workflow, and completion checklist. Point coding agents at this file so every code-changing task starts with a fresh Groveyard session.
 
-Groveyard reconciles session state automatically whenever sessions are listed, inspected, or used. Clean sessions with commits become `completed`; clean sessions whose branches are already merged into a configured target branch are removed and marked `cleaned`.
+Groveyard reconciles session state automatically whenever sessions are listed, inspected, or used. Clean sessions with commits become `completed`; clean sessions whose branches are already merged into a configured target branch are removed and marked `cleaned`. When a session completes or is cleaned, Groveyard also stops processes whose current working directory is inside that session worktree.
 
 Repositories can also define `.groveyard.yml` manually:
 

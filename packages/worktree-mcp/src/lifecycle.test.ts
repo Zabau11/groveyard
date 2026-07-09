@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -110,6 +110,7 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   assert.match(committed.commit.sha, /^[a-f0-9]{40}$/);
   assert.equal(committed.commit.message, "Commit session changes");
   assert.equal(committed.status, "");
+  assert.equal(committed.session.status, "completed");
 
   await assert.rejects(
     () => service.commitSession({ repoPath: repo, sessionId: created.id, message: "Empty commit" }),
@@ -118,6 +119,38 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
 
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
   assert.equal(cleaned.status, "cleaned");
+});
+
+test("WorktreeSessionService closes worktree-rooted processes when a session completes", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Close session servers",
+    baseBranch: "main",
+  });
+  const serverProcess = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
+    cwd: created.worktreePath,
+    stdio: "ignore",
+  });
+
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({
+    repoPath: repo,
+    sessionId: created.id,
+    path: "README.md",
+    content: "# Completed\n",
+  });
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  const committed = await service.commitSession({
+    repoPath: repo,
+    sessionId: created.id,
+    message: "Commit session changes",
+  });
+
+  assert.equal(committed.session.status, "completed");
+  await assertChildExited(serverProcess);
 });
 
 test("WorktreeSessionService reconciles clean committed sessions from git state", async () => {
@@ -378,6 +411,23 @@ async function createRepo(): Promise<string> {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout;
+}
+
+async function assertChildExited(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  await new Promise<void>((resolvePromise, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Expected child process ${child.pid ?? "unknown"} to exit.`));
+    }, 4_000);
+
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolvePromise();
+    });
+  });
 }
 
 function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {

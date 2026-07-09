@@ -1,6 +1,6 @@
 {
   "name": "@groveyard/mcp",
-  "version": "0.1.12",
+  "version": "0.1.14",
   "description": "Safe Git worktree sessions for coding agents.",
   "type": "module",
   "bin": {
