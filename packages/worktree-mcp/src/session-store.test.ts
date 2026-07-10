@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
@@ -53,8 +53,23 @@ test("JsonSessionStore persists valid registry JSON", async () => {
   await store.add(exampleSession());
 
   const raw = await readFile(registryPath, "utf8");
-  assert.match(raw, /"version": 1/);
+  assert.match(raw, /"version": 2/);
   assert.match(raw, /"sessions": \[/);
+});
+
+test("JsonSessionStore migrates version 1 sessions to managed origin on the next save", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "worktree-mcp-store-v1-"));
+  const registryPath = join(directory, "sessions.json");
+  const { origin: _origin, ...legacySession } = exampleSession();
+  await writeFile(registryPath, `${JSON.stringify({ version: 1, sessions: [legacySession] }, null, 2)}\n`, "utf8");
+  const store = new JsonSessionStore(registryPath);
+
+  const loaded = await store.list();
+  assert.equal(loaded[0]?.origin, "managed");
+  await store.update(loaded[0]!.id, (session) => session);
+  const saved = JSON.parse(await readFile(registryPath, "utf8")) as { version: number; sessions: Array<{ origin: string }> };
+  assert.equal(saved.version, 2);
+  assert.equal(saved.sessions[0]?.origin, "managed");
 });
 
 async function createStore(): Promise<JsonSessionStore> {
@@ -70,6 +85,7 @@ function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     branch: "agent/fix-checkout-button",
     baseBranch: "main",
     taskName: "fix checkout button",
+    origin: "managed",
     status: "active",
     createdAt: "2026-07-06T12:00:00.000Z",
     updatedAt: "2026-07-06T12:00:00.000Z",

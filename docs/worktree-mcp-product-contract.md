@@ -21,7 +21,7 @@ They want agents to make code changes without:
 ## Core Workflow
 
 ```text
-1. Agent calls create_session for a coding task.
+1. Agent calls start_session for a coding task and passes its current workspace path.
 2. Server creates a Git worktree on a new session branch.
 3. Agent reads and writes files through session-scoped tools.
 4. Agent runs approved command profiles such as test, lint, or build.
@@ -35,7 +35,8 @@ The MVP is a local stdio MCP server with a small session registry and Git worktr
 
 Required MCP tools:
 
-- `create_session`: create an isolated Git worktree for a task.
+- `start_session`: adopt a linked worktree or create an isolated managed worktree for a task.
+- `create_session`: compatibility alias that always creates a managed worktree.
 - `list_sessions`: list active and completed sessions.
 - `get_session`: inspect one session's metadata.
 - `cleanup_session`: remove a session worktree safely.

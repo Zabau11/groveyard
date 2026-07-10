@@ -7,8 +7,8 @@ export default function Home() {
       <section className="hero" aria-labelledby="hero-title">
         <AsciiLogo className="hero-logo" decorative glitch />
 
-        <h1 id="hero-title">Git Worktree MCP</h1>
-        <p className="hero-lede">Clean worktrees for coding agents. Local, small, and safe to inspect.</p>
+        <h1 id="hero-title">Groveyard</h1>
+        <p className="hero-lede">An isolated, validated Git workspace for every coding-agent task.</p>
 
         <a
           aria-label="Open GitHub repository"
@@ -26,57 +26,51 @@ export default function Home() {
       </section>
 
       <section className="docs-section" id="install" aria-labelledby="install-title">
-        <h2 id="install-title">Installation</h2>
-        <p>Install the Groveyard MCP package in the repository where agents should work.</p>
-        <CopyCommand command="npm install @groveyard/mcp" />
+        <h2 id="install-title">Start here</h2>
+        <p>Run one command in the repository where your coding agent works.</p>
+        <CopyCommand command="npx -y @groveyard/mcp setup" />
       </section>
 
       <section className="docs-section" id="setup" aria-labelledby="setup-title">
         <h2 id="setup-title">Setup</h2>
-        <p>Initialize the workspace once. Groveyard writes the agent contract, checks the repo, and connects MCP.</p>
+        <p>Groveyard detects the current coding app, installs its MCP entry and instructions, then verifies the complete path.</p>
         <pre className="code-block">
           <code>
-            <span className="token-muted">$</span> groveyard init
+            <span className="token-muted">$</span> npx -y @groveyard/mcp setup
             {"\n"}
-            <span className="token-key">ok</span> .groveyard.yml created
+            <span className="token-key">✓</span> Found repository
             {"\n"}
-            <span className="token-key">ok</span> .groveyard/AGENTS.md ready
+            <span className="token-key">✓</span> Detected VS Code
+            {"\n"}
+            <span className="token-key">✓</span> Installed Groveyard MCP
+            {"\n"}
+            <span className="token-key">✓</span> Added agent instructions
+            {"\n"}
+            <span className="token-key">✓</span> Verified connection
             {"\n\n"}
-            <span className="token-muted">$</span> groveyard doctor
-            {"\n"}
-            <span className="token-key">ok</span> Git repository found
-            {"\n"}
-            <span className="token-key">ok</span> Worktree support available
-            {"\n"}
-            <span className="token-key">ok</span> Agent instructions installed
-            {"\n\n"}
-            <span className="token-muted">$</span> groveyard connect
-            {"\n"}
-            <span className="token-string">Groveyard MCP is ready for coding agents.</span>
+            <span className="token-string">Groveyard is ready. Restart VS Code and ask your agent to implement a task.</span>
           </code>
         </pre>
       </section>
 
       <section className="docs-section" aria-labelledby="usage-title">
         <h2 id="usage-title">Usage</h2>
-        <p>Give your agent a code-changing task. Groveyard creates the session contract and keeps the work isolated.</p>
+        <p>Give your agent a code-changing task. Groveyard creates or adopts a workspace and validates the handoff.</p>
         <pre className="code-block">
           <code>
             <span className="token-muted">You:</span>
             {"\n"}
-            <span className="token-string">"Refactor the auth flow and open a PR."</span>
+            <span className="token-string">Fix the authentication timeout and run the tests.</span>
             {"\n\n"}
             <span className="token-muted">Agent:</span>
             {"\n"}
-            <span className="token-key">creates</span>   a fresh Groveyard session
+            <span className="token-key">✓</span> Groveyard session started
             {"\n"}
-            <span className="token-key">edits</span>     only inside the assigned worktree
+            <span className="token-key">✓</span> Working in an isolated workspace
             {"\n"}
-            <span className="token-key">checks</span>    status and diff before handoff
+            <span className="token-key">✓</span> Validation passed
             {"\n"}
-            <span className="token-key">reports</span>   changed files, tests, and next steps
-            {"\n"}
-            <span className="token-key">cleans</span>    completed sessions when Git proves they are done
+            <span className="token-key">✓</span> Session ready to merge
           </code>
         </pre>
       </section>

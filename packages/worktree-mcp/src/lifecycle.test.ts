@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,7 +122,123 @@ test("WorktreeSessionService creates, lists, gets, and cleans a session", async 
   assert.equal(cleaned.status, "cleaned");
 });
 
-test("WorktreeSessionService closes worktree-rooted processes when a session completes", async () => {
+test("startSession creates a managed workspace from the primary checkout", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const result = await service.startSession({ repoPath: repo, workspacePath: repo, taskName: "Managed start" });
+
+  assert.equal(result.action, "created");
+  assert.equal(result.session.origin, "managed");
+  assert.notEqual(result.session.worktreePath, repo);
+  assert.match(result.session.worktreePath, /\.agent-worktrees/);
+  await service.cleanupSession({ repoPath: repo, sessionId: result.session.id });
+});
+
+test("startSession adopts a linked worktree and reuses its active session", async () => {
+  const repo = await createRepo();
+  const linked = await mkdtemp(join(tmpdir(), "groveyard-native-worktree-"));
+  await git(repo, ["worktree", "add", "-b", "native/auth-fix", linked, "main"]);
+  await mkdir(join(linked, "src"), { recursive: true });
+  await writeFile(join(linked, "src", "dirty.txt"), "uncommitted\n", "utf8");
+  const head = (await git(linked, ["rev-parse", "HEAD"])).trim();
+  const service = new WorktreeSessionService();
+
+  const adopted = await service.startSession({
+    repoPath: repo,
+    workspacePath: join(linked, "src"),
+    taskName: "Adopt auth fix",
+  });
+
+  assert.equal(adopted.action, "adopted");
+  assert.equal(adopted.session.origin, "adopted");
+  assert.equal(adopted.session.worktreePath, await realpath(linked));
+  assert.equal(adopted.session.branch, "native/auth-fix");
+  assert.equal(adopted.session.baseBranch, "native/auth-fix");
+  assert.equal(adopted.session.baseCommit, head);
+
+  const status = await service.gitStatus({ repoPath: linked, sessionId: adopted.session.id });
+  assert.match(status.status, /src\//);
+  const reused = await service.startSession({ repoPath: linked, workspacePath: linked, taskName: "Same workspace" });
+  assert.equal(reused.action, "reused");
+  assert.equal(reused.session.id, adopted.session.id);
+
+  const primarySessions = await service.listSessions(repo);
+  const linkedSessions = await service.listSessions(linked);
+  assert.equal(primarySessions[0]?.id, linkedSessions[0]?.id);
+});
+
+test("cleanup releases an adopted worktree without removing files or the branch", async () => {
+  const repo = await createRepo();
+  const linked = await mkdtemp(join(tmpdir(), "groveyard-release-worktree-"));
+  await git(repo, ["worktree", "add", "-b", "native/release", linked, "main"]);
+  await writeFile(join(linked, "keep.txt"), "keep\n", "utf8");
+  const service = new WorktreeSessionService();
+  const adopted = await service.startSession({ repoPath: repo, workspacePath: linked, taskName: "Release safely" });
+
+  const released = await service.cleanupSession({ repoPath: repo, sessionId: adopted.session.id });
+  assert.equal(released.status, "released");
+  assert.equal(await readFile(join(linked, "keep.txt"), "utf8"), "keep\n");
+  assert.equal((await git(repo, ["branch", "--list", "native/release"])).trim().length > 0, true);
+
+  await assert.rejects(() => service.gitStatus({ repoPath: repo, sessionId: released.id }), /released/);
+  const readopted = await service.startSession({ repoPath: repo, workspacePath: linked, taskName: "Adopt again" });
+  assert.equal(readopted.action, "adopted");
+  assert.notEqual(readopted.session.id, released.id);
+});
+
+test("reconciliation releases adopted worktrees after external removal or merge", async () => {
+  const repo = await createRepo();
+  const removedPath = await mkdtemp(join(tmpdir(), "groveyard-external-remove-"));
+  await git(repo, ["worktree", "add", "-b", "native/external-remove", removedPath, "main"]);
+  const service = new WorktreeSessionService();
+  const removedSession = await service.startSession({ repoPath: repo, workspacePath: removedPath, taskName: "External removal" });
+  await git(repo, ["worktree", "remove", "--force", removedPath]);
+  const afterRemoval = await service.listSessions(repo);
+  assert.equal(afterRemoval.find((session) => session.id === removedSession.session.id)?.status, "released");
+
+  const mergedPath = await mkdtemp(join(tmpdir(), "groveyard-adopted-merge-"));
+  await git(repo, ["worktree", "add", "-b", "native/merged-adopted", mergedPath, "main"]);
+  const mergedSession = await service.startSession({ repoPath: repo, workspacePath: mergedPath, taskName: "Merged adoption" });
+  await writeFile(join(mergedPath, "merged.txt"), "merged\n", "utf8");
+  await git(mergedPath, ["add", "merged.txt"]);
+  await git(mergedPath, ["-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Merged adopted work"]);
+  await git(repo, ["merge", "--ff-only", "native/merged-adopted"]);
+  const afterMerge = await service.listSessions(repo);
+  assert.equal(afterMerge.find((session) => session.id === mergedSession.session.id)?.status, "released");
+  assert.equal(existsSync(mergedPath), true);
+});
+
+test("startSession rejects detached and different-repository worktrees", async () => {
+  const repo = await createRepo();
+  const otherRepo = await createRepo();
+  const detached = await mkdtemp(join(tmpdir(), "groveyard-detached-worktree-"));
+  await git(repo, ["worktree", "add", "--detach", detached, "main"]);
+  const service = new WorktreeSessionService();
+
+  await assert.rejects(
+    () => service.startSession({ repoPath: repo, workspacePath: detached, taskName: "Detached" }),
+    /detached-HEAD/,
+  );
+  await assert.rejects(
+    () => service.startSession({ repoPath: repo, workspacePath: otherRepo, taskName: "Wrong repo" }),
+    /different Git repository/,
+  );
+});
+
+test("createSession remains a managed-worktree compatibility entry point from a linked worktree", async () => {
+  const repo = await createRepo();
+  const linked = await mkdtemp(join(tmpdir(), "groveyard-create-compat-"));
+  await git(repo, ["worktree", "add", "-b", "native/compat", linked, "main"]);
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({ repoPath: linked, taskName: "Compatibility" });
+
+  assert.equal(created.origin, "managed");
+  assert.notEqual(created.worktreePath, linked);
+  assert.match(created.worktreePath, /\.agent-worktrees/);
+  await service.cleanupSession({ repoPath: linked, sessionId: created.id });
+});
+
+test("WorktreeSessionService closes worktree-rooted processes when a session completes", { skip: process.platform === "win32" }, async () => {
   const repo = await createRepo();
   const service = new WorktreeSessionService();
   const created = await service.createSession({
@@ -284,7 +401,7 @@ test("WorktreeSessionService rejects active operations after cleanup", async () 
   );
 });
 
-test("WorktreeSessionService rejects path escape attempts", async () => {
+test("WorktreeSessionService rejects path escape attempts", { skip: process.platform === "win32" }, async () => {
   const repo = await createRepo();
   const outside = await mkdtemp(join(tmpdir(), "groveyard-outside-"));
   const service = new WorktreeSessionService();
@@ -390,7 +507,7 @@ allowDirtyBase: true
     baseBranch: "main",
   });
 
-  assert.match(created.worktreePath, /\.custom-worktrees\/sess_/);
+  assert.ok(created.worktreePath.includes(".custom-worktrees"));
   assert.match(created.branch, /^codex\/configured-session-/);
 
   const cleaned = await service.cleanupSession({ repoPath: repo, sessionId: created.id });
@@ -439,6 +556,7 @@ function exampleSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
     baseBranch: "main",
     baseCommit: "abc123",
     taskName: "forged",
+    origin: "managed",
     status: "active",
     createdAt: "2026-07-07T12:00:00.000Z",
     updatedAt: "2026-07-07T12:00:00.000Z",

@@ -1,46 +1,21 @@
 {
-  "name": "paraflow-orchestrator",
+  "name": "groveyard-monorepo",
   "version": "0.1.0",
-  "description": "Task contracts that keep AI coding agents inside their lane.",
-  "type": "module",
+  "private": true,
+  "description": "Groveyard MCP server, CLI, and website.",
   "workspaces": [
     "packages/*",
     "website"
   ],
-  "bin": {
-    "paraflow": "./dist/index.js"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build -w @groveyard/mcp && npm run build -w @groveyard/site",
     "build:groveyard": "npm run build -w @groveyard/mcp",
-    "build:worktree-mcp": "npm run build -w @groveyard/mcp",
-    "dev": "npm run dev:web",
-    "dev:orchestrator": "tsx src/index.ts",
-    "dev:paraflow": "tsx src/index.ts",
-    "dev:web": "npm run dev -w @groveyard/site",
-    "dev:groveyard": "npm run dev -w @groveyard/mcp",
-    "dev:worktree-mcp": "npm run dev -w @groveyard/mcp",
     "build:web": "npm run build -w @groveyard/site",
+    "dev:groveyard": "npm run dev -w @groveyard/mcp",
+    "dev:web": "npm run dev -w @groveyard/site",
+    "test": "npm run test -w @groveyard/mcp",
     "test:groveyard": "npm run test -w @groveyard/mcp",
-    "test:worktree-mcp": "npm run test -w @groveyard/mcp",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@types/react": "^19.2.17",
-    "commander": "^12.1.0",
-    "execa": "^9.5.2",
-    "fast-glob": "^3.3.2",
-    "ink": "^7.1.0",
-    "minimatch": "^10.0.1",
-    "react": "^19.2.7",
-    "yaml": "^2.6.1",
-    "zod": "^3.24.1"
-  },
-  "devDependencies": {
-    "@groveyard/mcp": "^0.1.10",
-    "@types/node": "^22.10.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typecheck": "npm run typecheck -w @groveyard/mcp"
   },
   "engines": {
     "node": ">=20"

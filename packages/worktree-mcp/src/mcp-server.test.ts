@@ -13,7 +13,7 @@ import {
 } from "./mcp-server.js";
 
 test("agent contract explains the safe MCP workflow", () => {
-  assert.ok(sessionPolicy.some((line) => line.includes("every code-changing task") && line.includes("create_session")));
+  assert.ok(sessionPolicy.some((line) => line.includes("every code-changing task") && line.includes("start_session")));
   assert.ok(sessionPolicy.some((line) => line.includes("read-only")));
   assert.ok(agentContract.some((line) => line.includes("worktreePath")));
   assert.ok(agentContract.some((line) => line.includes("sessionId")));
@@ -21,7 +21,7 @@ test("agent contract explains the safe MCP workflow", () => {
   assert.ok(agentContract.some((line) => line.includes("Commit only when the user asks")));
   assert.ok(agentContract.some((line) => line.includes("automatically retire clean sessions")));
 
-  assert.equal(recommendedWorkflow[0], "create_session");
+  assert.equal(recommendedWorkflow[0], "start_session");
   assert.ok(recommendedWorkflow.includes("run_command_profile when a relevant profile exists"));
 
   assert.ok(
@@ -36,12 +36,13 @@ test("createSessionNextSteps binds guidance to the created session", () => {
     id: "sess_test",
     branch: "agent/test",
     worktreePath: "/tmp/groveyard/sess_test",
+    origin: "managed",
   });
 
   assert.ok(nextSteps.some((line) => line.includes("sess_test")));
   assert.ok(nextSteps.some((line) => line.includes("/tmp/groveyard/sess_test")));
   assert.ok(nextSteps.some((line) => line.includes("agent/test")));
-  assert.ok(nextSteps.some((line) => line.includes("future code-changing tasks") && line.includes("fresh Groveyard session")));
+  assert.ok(nextSteps.some((line) => line.includes("future code-changing tasks") && line.includes("start_session")));
   assert.ok(nextSteps.some((line) => line.includes("Do not manually commit or clean up") && line.includes("automatically retire sessions")));
 });
 
@@ -54,7 +55,7 @@ test("agent instructions are available as MCP-native prompt and resource content
   assert.match(instructions, /improve the website hero/);
   assert.match(instructions, /## Session Policy/);
   assert.match(instructions, /every code-changing task/);
-  assert.match(instructions, /create_session/);
+  assert.match(instructions, /start_session/);
   assert.match(instructions, /git_status/);
   assert.match(instructions, /git_diff/);
 });

@@ -26,10 +26,10 @@ commands:
     "utf8",
   );
 
-  const { stdout } = await runCli(["doctor", "--repo", repo, "--json"]);
+  const { stdout } = await runCli(["doctor", "--repo", repo, "--json"], { reject: false });
   const report = JSON.parse(stdout) as { status: string; repoRoot: string; config: { worktreesRoot: string; branchPrefix: string; allowDirtyBase: boolean } };
 
-  assert.equal(report.status, "ok");
+  assert.equal(report.status, "error");
   assert.equal(report.repoRoot, repo);
   assert.equal(report.config.worktreesRoot, ".custom-worktrees");
   assert.equal(report.config.branchPrefix, "cli/");
@@ -38,13 +38,13 @@ commands:
 
 test("CLI doctor prints a readable non-JSON report", async () => {
   const repo = await createRepo();
-  const { stdout } = await runCli(["doctor", "--repo", repo]);
+  const { stdout } = await runCli(["doctor", "--repo", repo], { reject: false });
 
   assert.match(stdout, /____/);
   assert.match(stdout, /Doctor/);
-  assert.match(stdout, /Ready for agent worktrees/);
+  assert.match(stdout, /Groveyard needs attention/);
   assert.match(stdout, /Command profiles: none/);
-  assert.match(stdout, /groveyard init/);
+  assert.match(stdout, /groveyard setup/);
 });
 
 test("CLI terminal banner matches the website ASCII art", async () => {
@@ -66,7 +66,7 @@ test("CLI connect prints MCP config snippets", async () => {
   assert.match(stdout, /"mcpServers"/);
   assert.match(stdout, new RegExp(escapeRegExp(`"${serverName}"`)));
   assert.match(stdout, /"@groveyard\/mcp"/);
-  assert.match(stdout, /Agent instructions/);
+  assert.match(stdout, /agent instructions/i);
   assert.match(stdout, /\.groveyard\/AGENTS\.md/);
   assert.match(stdout, new RegExp(escapeRegExp(repo)));
 });
@@ -106,7 +106,7 @@ test("CLI connect can write detected config files", async () => {
   await mkdir(join(home, ".cursor"), { recursive: true });
   await writeFile(join(home, ".codex", "config.toml"), "# existing config\n", "utf8");
 
-  const { stdout } = await runCli(["connect", "--repo", repo, "--yes"], {
+  const { stdout } = await runCli(["connect", "--repo", repo, "--yes", "--all"], {
     env: {
       HOME: home,
     },
@@ -119,8 +119,8 @@ test("CLI connect can write detected config files", async () => {
   const serverName = expectedConnectServerName(repo);
   const cursorServer = cursorConfig.mcpServers[serverName];
 
-  assert.match(stdout, /Connected/);
-  assert.match(stdout, /Agent instructions/);
+  assert.match(stdout, /Installed Groveyard MCP/);
+  assert.match(stdout, /agent instructions/i);
   assert.match(codexConfig, new RegExp(String.raw`\[mcp_servers\.${escapeRegExp(serverName)}\]`));
   assert.match(codexConfig, new RegExp(escapeRegExp(repo)));
   assert.match(codexConfig, /GROVEYARD_AGENT_INSTRUCTIONS/);
@@ -368,7 +368,7 @@ test("CLI init creates config from package scripts", async () => {
   assert.match(config, /commands:\n  test: npm test\n  build: npm run build\n  lint: npm run lint\n  typecheck: npm run typecheck/);
   assert.match(agentInstructions, /# Groveyard Agent Instructions/);
   assert.match(agentInstructions, /every code-changing task/);
-  assert.match(agentInstructions, /create_session/);
+  assert.match(agentInstructions, /start_session/);
   assert.match(agentInstructions, /contract_status/);
   assert.match(gitignore, /# Groveyard\n\.agent-worktrees\/\n\.groveyard\//);
 });
@@ -445,10 +445,20 @@ async function runCli(
   args: string[],
   options: { reject?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const isolatedHome = options.env?.HOME ?? await mkdtemp(join(tmpdir(), "groveyard-cli-home-"));
   try {
     const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], {
       env: {
         ...process.env,
+        HOME: isolatedHome,
+        PATH: process.env.PATH,
+        GROVEYARD_TEST_DISABLE_EXECUTABLE_DETECTION: "1",
+        CODEX_THREAD_ID: "",
+        CODEX_SANDBOX: "",
+        CODEX_PERMISSION_PROFILE: "",
+        VSCODE_PID: "",
+        VSCODE_IPC_HOOK_CLI: "",
+        TERM_PROGRAM: "",
         ...options.env,
       },
       maxBuffer: 1024 * 1024 * 20,

@@ -5,19 +5,19 @@ import { z } from "zod";
 import { WorktreeSessionService } from "./lifecycle.js";
 import type { SessionRecord } from "./sessions.js";
 
-export const mcpServerVersion = "0.1.10";
+export const mcpServerVersion = "0.1.15";
 export const instructionsResourceUri = "groveyard://instructions";
 export const workflowPromptName = "groveyard_session_workflow";
 
 export const sessionPolicy = [
-  "For every code-changing task, first call create_session before reading, writing, running project commands, committing, or reporting implementation work.",
+  "For every code-changing task, first call start_session and pass the current workspace directory so Groveyard can create or adopt the right workspace.",
   "Do not create a session for read-only questions, explanations, planning, status checks, or reviews that will not modify files.",
 ];
 
 export const agentContract = [
   ...sessionPolicy,
-  "Work only inside the worktreePath returned by create_session. Treat the user's base checkout as read-only context.",
-  "Use the sessionId returned by create_session for every session-scoped Groveyard tool call.",
+  "For managed sessions, work only inside the returned worktreePath. For adopted sessions, continue in the existing workspace; Groveyard tracks but never removes it.",
+  "Use the sessionId returned by start_session for every session-scoped Groveyard tool call.",
   "Read files or list directories before writing. Do not guess file contents.",
   "Write only paths relative to the session worktree. Absolute paths and path escapes are rejected.",
   "Run configured command profiles with run_command_profile when validation is needed. Groveyard command profiles are the approved command surface.",
@@ -26,7 +26,7 @@ export const agentContract = [
 ];
 
 export const recommendedWorkflow = [
-  "create_session",
+  "start_session",
   "list_files or read_file",
   "write_file",
   "run_command_profile when a relevant profile exists",
@@ -65,7 +65,7 @@ export function renderAgentInstructions(taskName = "the user's task"): string {
   ].join("\n");
 }
 
-export async function startMcpServer(): Promise<void> {
+export function createMcpServer(): McpServer {
   const sessionService = new WorktreeSessionService();
 
   const server = new McpServer({
@@ -75,7 +75,7 @@ export async function startMcpServer(): Promise<void> {
 
   const repoPathDescription =
     "Path inside the Git repository to manage, resolved on the MCP server process filesystem. Defaults to GROVEYARD_REPO, then the MCP server working directory. For remote or sandboxed MCP clients, this path must be visible to the Groveyard server host.";
-  const sessionIdDescription = "Session ID returned by create_session. All operations are scoped to this registered worktree session.";
+  const sessionIdDescription = "Session ID returned by start_session. All operations are scoped to this registered worktree session.";
 
   server.registerResource(
     "groveyard_instructions",
@@ -139,8 +139,38 @@ export async function startMcpServer(): Promise<void> {
   );
 
   server.tool(
+    "start_session",
+    "Start a Groveyard session for a coding task. Pass the current workspace directory so Groveyard adopts an existing linked worktree when appropriate; otherwise it creates a managed worktree. Adopted worktrees are tracked but never removed by Groveyard.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      taskName: z.string().min(1).describe("Short human-readable task description."),
+      workspacePath: z.string().optional().describe("Current coding workspace directory. Paths inside linked worktrees resolve to the worktree root."),
+      baseBranch: z.string().min(1).optional().describe("Optional base ref for managed sessions; metadata only for adopted sessions."),
+    },
+    async ({ repoPath, taskName, workspacePath, baseBranch }) => {
+      const result = await sessionService.startSession({ repoPath, taskName, workspacePath, baseBranch });
+      const session = result.session;
+      return jsonResponse("start_session", {
+        ...result,
+        sessionId: session.id,
+        workspacePath: session.worktreePath,
+        branch: session.branch,
+        mode: session.origin,
+        nextAction: session.origin === "managed"
+          ? `Perform all task work in ${session.worktreePath}.`
+          : `Continue task work in the existing workspace ${session.worktreePath}; Groveyard will not remove it.`,
+      }, createSessionNextSteps(session), {
+        agentContract,
+        completionChecklist,
+        instructionsResourceUri,
+        workflowPromptName,
+      });
+    },
+  );
+
+  server.tool(
     "create_session",
-    "Create an isolated Git worktree session for a coding task. For every code-changing task, call this before reading, writing, running commands, committing, or reporting implementation work. Use the returned worktreePath as the only writable workspace for the task.",
+    "Compatibility alias for callers that require a newly managed worktree. New integrations should use start_session.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       taskName: z.string().min(1).describe("Short human-readable task name for the session."),
@@ -154,6 +184,46 @@ export async function startMcpServer(): Promise<void> {
         instructionsResourceUri,
         workflowPromptName,
       });
+    },
+  );
+
+  server.tool(
+    "session_status",
+    "Return a session's metadata and current Git status.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+    },
+    async ({ repoPath, sessionId }) => jsonResponse("session_status", await sessionService.gitStatus({ repoPath, sessionId })),
+  );
+
+  server.tool(
+    "validate_session",
+    "Review Git status, diff, and the Groveyard completion contract for an active session.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+    },
+    async ({ repoPath, sessionId }) => {
+      const status = await sessionService.gitStatus({ repoPath, sessionId });
+      const diff = await sessionService.gitDiff({ repoPath, sessionId });
+      const contract = await sessionService.contractStatus({ repoPath, sessionId });
+      return jsonResponse("validate_session", { session: contract.session, status: status.status, diff: diff.diff, contract });
+    },
+  );
+
+  server.tool(
+    "finish_session",
+    "Validate an active session and return its handoff state. This does not remove the workspace or commit changes.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+    },
+    async ({ repoPath, sessionId }) => {
+      const status = await sessionService.gitStatus({ repoPath, sessionId });
+      const diff = await sessionService.gitDiff({ repoPath, sessionId });
+      const contract = await sessionService.contractStatus({ repoPath, sessionId });
+      return jsonResponse("finish_session", { session: contract.session, status: status.status, diff: diff.diff, ready: contract.readyToCommit });
     },
   );
 
@@ -291,17 +361,24 @@ export async function startMcpServer(): Promise<void> {
       ]),
   );
 
+  return server;
+}
+
+export async function startMcpServer(): Promise<void> {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "branch" | "worktreePath">): string[] {
+export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "branch" | "worktreePath" | "origin">): string[] {
   return [
     `Use sessionId ${session.id} for every Groveyard tool call in this task.`,
-    `Work only inside ${session.worktreePath}.`,
+    session.origin === "managed"
+      ? `Work only inside the newly managed workspace ${session.worktreePath}.`
+      : `Continue in the adopted workspace ${session.worktreePath}; Groveyard will track but never remove it.`,
     `Keep changes on branch ${session.branch}.`,
     "Start by listing or reading the files relevant to the task.",
-    "For future code-changing tasks, create a fresh Groveyard session before implementation work begins.",
+    "For future code-changing tasks, call start_session before implementation work begins.",
     "Call read_file before overwriting any existing file.",
     "After edits, run a relevant command profile if one exists.",
     "Before your final answer, call git_status and git_diff for this session.",

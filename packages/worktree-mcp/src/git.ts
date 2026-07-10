@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { realpath } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -50,6 +52,64 @@ export async function resolveRepoRoot(repoPath: string): Promise<string> {
 
     throw error;
   }
+}
+
+export type GitWorktreeRecord = {
+  path: string;
+  head: string;
+  branch?: string;
+  bare: boolean;
+  detached: boolean;
+  primary: boolean;
+};
+
+export type GitWorktreeGroup = {
+  primaryPath: string;
+  commonGitDirectory: string;
+  current: GitWorktreeRecord;
+  worktrees: GitWorktreeRecord[];
+};
+
+export function parseWorktreeListPorcelain(output: string): GitWorktreeRecord[] {
+  const blocks = output.trim().split(/\r?\n\r?\n/).filter(Boolean);
+  return blocks.map((block, index) => {
+    const values = new Map<string, string>();
+    const flags = new Set<string>();
+    for (const line of block.split(/\r?\n/)) {
+      const separator = line.indexOf(" ");
+      if (separator === -1) flags.add(line);
+      else values.set(line.slice(0, separator), line.slice(separator + 1));
+    }
+    const path = values.get("worktree");
+    const head = values.get("HEAD");
+    if (!path || !head) throw new Error("Malformed git worktree list --porcelain output.");
+    const branchRef = values.get("branch");
+    return {
+      path,
+      head,
+      branch: branchRef?.replace(/^refs\/heads\//, ""),
+      bare: flags.has("bare"),
+      detached: flags.has("detached") || !branchRef,
+      primary: index === 0,
+    };
+  });
+}
+
+export async function resolveWorktreeGroup(repoPath: string): Promise<GitWorktreeGroup> {
+  const worktreeRoot = await resolveRepoRoot(repoPath);
+  const rawCommonDirectory = await runGit(worktreeRoot, ["rev-parse", "--git-common-dir"]);
+  const commonGitDirectory = await realpath(isAbsolute(rawCommonDirectory) ? rawCommonDirectory : resolve(worktreeRoot, rawCommonDirectory));
+  const parsed = parseWorktreeListPorcelain(await runGit(worktreeRoot, ["worktree", "list", "--porcelain"]));
+  const worktrees = await Promise.all(parsed.map(async (record) => ({ ...record, path: await realpath(record.path) })));
+  const canonicalRoot = await realpath(worktreeRoot);
+  const current = worktrees.find((record) => record.path === canonicalRoot);
+  const primary = worktrees.find((record) => record.primary);
+
+  if (!current) throw new Error(`Worktree ${canonicalRoot} is not registered in git worktree list.`);
+  if (!primary) throw new Error("Git worktree group has no primary checkout.");
+  if (current.bare || primary.bare) throw new Error("Bare repositories are not supported by Groveyard.");
+
+  return { primaryPath: primary.path, commonGitDirectory, current, worktrees };
 }
 
 export async function getCurrentBranch(repoRoot: string): Promise<string> {
@@ -185,7 +245,7 @@ async function gitUntrackedFiles(worktreePath: string): Promise<string[]> {
 
 async function gitDiffUntrackedFile(worktreePath: string, filePath: string): Promise<string> {
   try {
-    return await runGit(worktreePath, ["diff", "--no-index", "--binary", "--", "/dev/null", filePath]);
+    return await runGit(worktreePath, ["diff", "--no-index", "--binary", "--", process.platform === "win32" ? "NUL" : "/dev/null", filePath]);
   } catch (error) {
     if (error instanceof GitCommandError && error.output) {
       return error.output;
