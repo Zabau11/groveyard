@@ -9,6 +9,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { getClientAdapters, type SetupContext } from "./client-adapters.js";
+import { renderAgentInstructions } from "./mcp-server.js";
 
 const execFileAsync = promisify(execFile);
 const cliPath = join(dirname(fileURLToPath(import.meta.url)), "index.js");
@@ -24,9 +25,11 @@ test("setup configures a fresh repository for an explicit Codex client", async (
   assert.equal(report.connection.targets[0]?.verified, true);
 
   assert.equal(existsSync(join(repo, ".groveyard.yml")), true);
-  assert.match(await readFile(join(repo, ".groveyard", "AGENTS.md"), "utf8"), /start_session|create_session/);
+  assert.match(await readFile(join(repo, ".groveyard", "AGENTS.md"), "utf8"), /list_sessions/);
+  assert.match(await readFile(join(repo, ".groveyard", "AGENTS.md"), "utf8"), /resume_session/);
   assert.match(await readFile(join(repo, ".gitignore"), "utf8"), /^\.agent-worktrees\/$/m);
   assert.match(await readFile(join(repo, "AGENTS.md"), "utf8"), /## Groveyard workspace policy/);
+  assert.match(await readFile(join(repo, "AGENTS.md"), "utf8"), /groveyard:version 2/);
 
   const codex = await readFile(join(home, ".codex", "config.toml"), "utf8");
   assert.match(codex, /command = "npx"/);
@@ -213,6 +216,61 @@ test("setup --all configures every detected client but default setup configures 
   const allReport = await runSetup(repo, home, ["--all", "--json"]);
   assert.deepEqual(new Set(allReport.connection.selectedClientIds), new Set(["codex", "vscode"]));
   assert.equal(allReport.connection.targets.every((target: { verified: boolean }) => target.verified), true);
+});
+
+test("setup refreshes an older managed instruction block and doctor flags stale instructions", async () => {
+  const repo = await createRepo();
+  const home = await createHome();
+  await mkdir(join(repo, ".github"), { recursive: true });
+  await mkdir(dirname(vscodeConfigPath(home)), { recursive: true });
+  await writeFile(
+    join(repo, ".github", "copilot-instructions.md"),
+    [
+      "Project notes",
+      "",
+      "<!-- groveyard:start -->",
+      "## Groveyard workspace policy",
+      "",
+      "Before modifying files, start a Groveyard session for the task.",
+      "Work only in the workspace returned by Groveyard.",
+      "Validate the session before declaring the task complete.",
+      "Do not remove a dirty workspace without explicit user approval.",
+      "<!-- groveyard:end -->",
+      "",
+      "Keep this note.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(join(repo, ".groveyard.yml"), "worktreesRoot: .agent-worktrees\nbranchPrefix: agent/\nallowDirtyBase: false\ncommands: {}\n", "utf8");
+  await writeFile(join(repo, ".gitignore"), ".agent-worktrees/\n.groveyard/\n", "utf8");
+  await mkdir(join(repo, ".groveyard"), { recursive: true });
+  await writeFile(join(repo, ".groveyard", "AGENTS.md"), `${renderAgentInstructions()}\n`, "utf8");
+  await execFileAsync("git", ["add", ".github/copilot-instructions.md", ".groveyard.yml", ".gitignore"], { cwd: repo });
+  await execFileAsync("git", ["commit", "-m", "Add stale instructions"], { cwd: repo });
+
+  const before = await runCli(repo, home, ["doctor", "--repo", repo, "--json"]);
+  const beforeReport = JSON.parse(before.stdout) as {
+    status: string;
+    readiness: { checks: Array<{ id: string; ok: boolean; detail: string }> };
+  };
+  assert.equal(beforeReport.status, "error");
+  assert.equal(beforeReport.readiness.checks.find((check) => check.id === "instruction-version")?.ok, false);
+
+  const refreshed = await runSetup(repo, home, ["--client", "vscode", "--json"]);
+  assert.equal(refreshed.status, "ready");
+  const instructions = await readFile(join(repo, ".github", "copilot-instructions.md"), "utf8");
+  assert.match(instructions, /groveyard:version 2/);
+  assert.match(instructions, /resume_session/);
+  assert.match(instructions, /Keep this note\./);
+
+  const after = await runCli(repo, home, ["doctor", "--repo", repo, "--json"]);
+  const afterReport = JSON.parse(after.stdout) as {
+    status: string;
+    readiness: { checks: Array<{ id: string; ok: boolean }> };
+  };
+  assert.equal(afterReport.status, "ok");
+  assert.equal(afterReport.readiness.checks.find((check) => check.id === "instruction-version")?.ok, true);
 });
 
 test("setup --no-commit leaves generated files uncommitted and skips client configuration", async () => {

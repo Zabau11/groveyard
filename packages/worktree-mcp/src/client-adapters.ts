@@ -96,12 +96,18 @@ export type ClientAdapter = {
 const managedStart = "<!-- groveyard:start -->";
 const managedEnd = "<!-- groveyard:end -->";
 const managedVersion = "1";
+export const managedInstructionBlockVersion = "2";
 
 export const managedInstructionBlock = `${managedStart}
+<!-- groveyard:version ${managedInstructionBlockVersion} -->
 ## Groveyard workspace policy
 
-Before modifying files, start a Groveyard session for the task.
-Work only in the workspace returned by Groveyard.
+Before changing code, call list_sessions and consider only active and completed sessions as continuable.
+If the request is to continue, review, validate, commit, clean, or discuss existing work, never create a new session.
+Choose an exact session ID or branch match when present, otherwise the single clearly matching task; if several sessions could match, ask the user and show the task name, status, branch, and session ID.
+Call resume_session before editing a completed match.
+Only call start_session for a clearly new code-changing request with no matching session.
+Work only in the workspace returned by Groveyard or the existing workspace named by resume_session.
 Validate the session before declaring the task complete.
 Do not remove a dirty workspace without explicit user approval.
 ${managedEnd}`;
@@ -200,6 +206,22 @@ export async function validateInstructionTargets(context: SetupContext, adapters
     if (existing === undefined) continue;
     validateManagedMarkers(existing, path);
   }
+}
+
+export function instructionTargetPaths(): string[] {
+  return [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".github/copilot-instructions.md",
+    ".cursor/rules/groveyard.mdc",
+    "GEMINI.md",
+  ];
+}
+
+export function managedInstructionState(content: string): "missing" | "current" | "outdated" {
+  if (!content.includes(managedStart) && !content.includes(managedEnd)) return "missing";
+  if (!content.includes(managedStart) || !content.includes(managedEnd)) return "outdated";
+  return content.includes(`<!-- groveyard:version ${managedInstructionBlockVersion} -->`) ? "current" : "outdated";
 }
 
 export async function installInstructionTargets(context: SetupContext, adapters: ClientAdapter[]): Promise<InstructionResult[]> {

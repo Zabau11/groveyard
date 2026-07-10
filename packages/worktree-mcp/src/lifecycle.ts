@@ -6,6 +6,7 @@ import {
   assertCleanWorktree,
   branchHasCommitsAfter,
   branchHasUniqueCommits,
+  gitRefExists,
   type GitCommitResult,
   commitAllChanges,
   createGitWorktree,
@@ -19,7 +20,7 @@ import {
   resolveWorktreeGroup,
 } from "./git.js";
 import { JsonSessionStore } from "./session-store.js";
-import type { SessionRecord } from "./sessions.js";
+import { newSessionContract, type SessionRecord } from "./sessions.js";
 import { resolveExistingSessionPath, resolveWritableSessionPath, toSessionRelativePath } from "./path-safety.js";
 import { loadConfig } from "./config.js";
 import {
@@ -44,6 +45,11 @@ export type StartSessionInput = CreateSessionInput & {
 export type StartSessionResult = {
   session: SessionRecord;
   action: "created" | "adopted" | "reused";
+};
+
+export type ResumeSessionResult = {
+  session: SessionRecord;
+  action: "resumed" | "already_active";
 };
 
 export type SessionLookupInput = {
@@ -156,12 +162,7 @@ export class WorktreeSessionService {
       status: "active",
       createdAt: now,
       updatedAt: now,
-      contract: {
-        readPaths: [],
-        listedPaths: [],
-        writtenPaths: [],
-        commandProfilesRun: [],
-      },
+      contract: newSessionContract(),
     };
 
     await this.storeForRepo(repoRoot).add(session);
@@ -204,7 +205,7 @@ export class WorktreeSessionService {
       status: "active",
       createdAt: now,
       updatedAt: now,
-      contract: { readPaths: [], listedPaths: [], writtenPaths: [], commandProfilesRun: [] },
+      contract: newSessionContract(),
     };
     await store.add(session);
     return { session, action: "adopted" };
@@ -220,6 +221,60 @@ export class WorktreeSessionService {
     const repoRoot = await this.resolveRepo(input.repoPath);
     await this.reconcileSessions(repoRoot);
     return this.storeForRepo(repoRoot).get(input.sessionId);
+  }
+
+  async resumeSession(input: SessionLookupInput): Promise<ResumeSessionResult> {
+    const repoRoot = await this.resolveRepo(input.repoPath);
+    await this.reconcileSessions(repoRoot);
+    const store = this.storeForRepo(repoRoot);
+    const session = await store.get(input.sessionId);
+
+    if (session.status === "active") {
+      return { session, action: "already_active" };
+    }
+
+    if (session.status === "cleaned" || session.status === "released" || session.status === "failed") {
+      throw new Error(`Cannot resume ${session.id} because it is ${session.status}. Start a new session if more work is needed.`);
+    }
+
+    if (session.status !== "completed") {
+      throw new Error(`Cannot resume ${session.id} because it is ${session.status}.`);
+    }
+
+    if (!(await pathExists(session.worktreePath))) {
+      throw new Error(`Cannot resume ${session.id} because its workspace no longer exists at ${session.worktreePath}.`);
+    }
+
+    const worktreeGroup = await resolveWorktreeGroup(session.worktreePath);
+    const normalizedWorktreePath = resolve(session.worktreePath);
+    if (!worktreeGroup.worktrees.some((record) => record.path === normalizedWorktreePath)) {
+      throw new Error(`Cannot resume ${session.id} because ${session.worktreePath} is not a registered Git worktree.`);
+    }
+
+    if (!(await gitRefExists(repoRoot, session.branch))) {
+      throw new Error(`Cannot resume ${session.id} because branch ${session.branch} no longer exists.`);
+    }
+
+    if (!(await isWorktreeClean(session.worktreePath))) {
+      throw new Error(`Cannot resume ${session.id} because ${session.worktreePath} has uncommitted changes.`);
+    }
+
+    const config = await loadConfig(repoRoot);
+    for (const targetBranch of config.autoCleanBranches) {
+      if (await isBranchMergedInto(repoRoot, session.branch, targetBranch)) {
+        throw new Error(`Cannot resume ${session.id} because branch ${session.branch} is already merged into ${targetBranch}.`);
+      }
+    }
+
+    const resumed = await store.update(input.sessionId, (current) => ({
+      ...current,
+      status: "active",
+      contract: {
+        ...newSessionContract(),
+        resumedAt: new Date().toISOString(),
+      },
+    }));
+    return { session: resumed, action: "resumed" };
   }
 
   async cleanupSession(input: SessionLookupInput): Promise<SessionRecord> {
@@ -301,6 +356,7 @@ export class WorktreeSessionService {
     const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
       ...contract,
       writtenPaths: addUnique(contract.writtenPaths, path),
+      resumedAt: undefined,
       lastMutationAt: new Date().toISOString(),
     }));
 
@@ -343,6 +399,7 @@ export class WorktreeSessionService {
     const updated = await this.updateContract(input.repoPath, input.sessionId, (contract) => ({
       ...contract,
       commandProfilesRun: addUnique(contract.commandProfilesRun, input.profile),
+      resumedAt: undefined,
       lastMutationAt: new Date().toISOString(),
     }));
 
@@ -491,6 +548,10 @@ async function reconcileSessionStatus(repoRoot: string, session: SessionRecord, 
   }
 
   if (!(await isWorktreeClean(session.worktreePath))) {
+    return "active";
+  }
+
+  if (session.contract.resumedAt && !isAtOrAfter(session.contract.lastMutationAt, session.contract.resumedAt)) {
     return "active";
   }
 

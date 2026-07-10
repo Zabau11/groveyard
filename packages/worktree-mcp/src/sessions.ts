@@ -8,6 +8,7 @@ export const sessionContractSchema = z.object({
   listedPaths: z.array(z.string()).default([]),
   writtenPaths: z.array(z.string()).default([]),
   commandProfilesRun: z.array(z.string()).default([]),
+  resumedAt: z.string().datetime().optional(),
   lastMutationAt: z.string().datetime().optional(),
   lastStatusAt: z.string().datetime().optional(),
   lastDiffAt: z.string().datetime().optional(),
@@ -60,5 +61,14 @@ export function touchSession(session: SessionRecord, now = new Date()): SessionR
   return {
     ...session,
     updatedAt: now.toISOString(),
+  };
+}
+
+export function newSessionContract(): SessionContract {
+  return {
+    readPaths: [],
+    listedPaths: [],
+    writtenPaths: [],
+    commandProfilesRun: [],
   };
 }

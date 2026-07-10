@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -12,6 +12,19 @@ import { WorktreeSessionService } from "./lifecycle.js";
 const execFileAsync = promisify(execFile);
 const distDirectory = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(distDirectory, "index.js");
+const packageJsonPath = join(dirname(distDirectory), "package.json");
+
+test("CLI version flags print only the package version", async () => {
+  const version = JSON.parse(await readFile(packageJsonPath, "utf8")) as { version: string };
+
+  const long = await runCli(["--version"]);
+  const short = await runCli(["-v"]);
+
+  assert.equal(long.stdout, `${version.version}\n`);
+  assert.equal(long.stderr, "");
+  assert.equal(short.stdout, `${version.version}\n`);
+  assert.equal(short.stderr, "");
+});
 
 test("CLI doctor reports repo config as JSON", async () => {
   const repo = await createRepo();
@@ -367,7 +380,7 @@ test("CLI init creates config from package scripts", async () => {
   assert.deepEqual(report.gitignore.added, [".agent-worktrees/", ".groveyard/"]);
   assert.match(config, /commands:\n  test: npm test\n  build: npm run build\n  lint: npm run lint\n  typecheck: npm run typecheck/);
   assert.match(agentInstructions, /# Groveyard Agent Instructions/);
-  assert.match(agentInstructions, /every code-changing task/);
+  assert.match(agentInstructions, /Before any code-changing task/);
   assert.match(agentInstructions, /start_session/);
   assert.match(agentInstructions, /contract_status/);
   assert.match(gitignore, /# Groveyard\n\.agent-worktrees\/\n\.groveyard\//);
@@ -425,6 +438,72 @@ test("CLI init help does not create a config file", async () => {
   await assert.rejects(() => readFile(join(repo, ".groveyard.yml"), "utf8"), /ENOENT/);
 });
 
+test("CLI upgrade --check reports current and available versions", async () => {
+  const version = JSON.parse(await readFile(packageJsonPath, "utf8")) as { version: string };
+
+  const current = await runCli(["upgrade", "--check"], {
+    env: {
+      GROVEYARD_TEST_NPM_VIEW_VERSION: version.version,
+      GROVEYARD_TEST_IS_GLOBAL_INSTALL: "1",
+    },
+  });
+  assert.match(current.stdout, new RegExp(`Groveyard ${escapeRegExp(version.version)} is current\\.`));
+
+  const available = await runCli(["upgrade", "--check"], {
+    env: {
+      GROVEYARD_TEST_NPM_VIEW_VERSION: "9.9.9",
+      GROVEYARD_TEST_IS_GLOBAL_INSTALL: "1",
+    },
+  });
+  assert.match(available.stdout, new RegExp(`Update available: ${escapeRegExp(version.version)} -> 9\\.9\\.9`));
+  assert.match(available.stdout, /Run `groveyard upgrade` to install it\./);
+});
+
+test("CLI upgrade --yes installs the latest global package through npm", async () => {
+  const mockDirectory = await mkdtemp(join(tmpdir(), "groveyard-mock-npm-"));
+  const logPath = join(mockDirectory, "npm.log");
+  const npmPath = await createMockNpm(mockDirectory, logPath);
+
+  const result = await runCli(["upgrade", "--yes"], {
+    env: {
+      GROVEYARD_TEST_NPM_COMMAND: npmPath,
+      GROVEYARD_TEST_NPM_VIEW_VERSION: "9.9.9",
+      GROVEYARD_TEST_INSTALLED_GLOBAL_VERSION: "9.9.9",
+      GROVEYARD_TEST_IS_GLOBAL_INSTALL: "1",
+    },
+  });
+
+  const log = await readFile(logPath, "utf8");
+  assert.match(log, /^install -g @groveyard\/mcp@latest$/m);
+  assert.match(result.stdout, /Groveyard updated to 9\.9\.9\./);
+  assert.match(result.stdout, /Restart Codex, Claude Code, VS Code, Cursor, or any other coding app/);
+});
+
+test("CLI upgrade refuses to mutate a non-global installation", async () => {
+  const result = await runCli(["upgrade"], {
+    env: {
+      GROVEYARD_TEST_NPM_VIEW_VERSION: "9.9.9",
+      GROVEYARD_TEST_IS_GLOBAL_INSTALL: "0",
+    },
+  });
+
+  assert.match(result.stdout, /Groveyard is not running from a global installation\./);
+  assert.match(result.stdout, /npm install -g @groveyard\/mcp@latest/);
+});
+
+test("CLI upgrade surfaces npm failures", async () => {
+  const missing = await runCli(["upgrade", "--check"], {
+    reject: false,
+    env: {
+      GROVEYARD_TEST_NPM_COMMAND: join(await mkdtemp(join(tmpdir(), "groveyard-missing-npm-")), "npm-missing"),
+      GROVEYARD_TEST_IS_GLOBAL_INSTALL: "1",
+    },
+  });
+
+  assert.equal(missing.exitCode, 1);
+  assert.match(missing.stdout, /ENOENT|spawn/i);
+});
+
 async function createRepo(): Promise<string> {
   const repo = await mkdtemp(join(tmpdir(), "groveyard-cli-repo-"));
 
@@ -441,6 +520,21 @@ async function createRepo(): Promise<string> {
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, { cwd });
   return stdout;
+}
+
+async function createMockNpm(directory: string, logPath: string): Promise<string> {
+  const scriptPath = join(directory, "mock-npm");
+  await writeFile(
+    scriptPath,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join(" ") + "\\n");
+process.stdout.write("");
+`,
+    "utf8",
+  );
+  await chmod(scriptPath, 0o755);
+  return scriptPath;
 }
 
 async function runCli(

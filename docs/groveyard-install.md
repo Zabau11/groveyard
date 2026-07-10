@@ -10,10 +10,10 @@ From the repository where the coding agent runs:
 npx -y @groveyard/mcp setup
 ```
 
-The equivalent scoped command is:
+For a one-time latest run without installing globally:
 
 ```bash
-npx -y @groveyard/mcp setup
+npx -y @groveyard/mcp@latest setup
 ```
 
 Setup performs one idempotent flow:
@@ -55,6 +55,9 @@ groveyard setup --yes
 groveyard setup --json --yes
 groveyard setup --force
 groveyard setup --no-instructions
+groveyard --version
+groveyard upgrade --check
+groveyard upgrade
 ```
 
 - `--yes` documents explicit non-interactive approval; normal setup is already question-free.

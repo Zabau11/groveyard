@@ -10,6 +10,7 @@ import { getCurrentBranch, gitStatusShort, resolveRepoRoot, runGit } from "./git
 import { WorktreeSessionService } from "./lifecycle.js";
 import { renderAgentInstructions } from "./mcp-server.js";
 import { listClientDetection, runRepositoryChecks, setupGroveyard, type SetupReport } from "./setup.js";
+import { formatUpgradeReport, runUpgrade } from "./upgrade.js";
 import type { SessionRecord } from "./sessions.js";
 
 type ParsedArgs = {
@@ -27,6 +28,7 @@ type ParsedArgs = {
   noInstructions: boolean;
   listClients: boolean;
   noCommit: boolean;
+  check: boolean;
 };
 
 type StyleColor = "bold" | "dim" | "green" | "cyan" | "yellow" | "red";
@@ -173,6 +175,9 @@ export async function runCli(argv: string[]): Promise<void> {
       case "clean":
         await clean(service, args);
         return;
+      case "upgrade":
+        await upgrade(args);
+        return;
       default:
         throw new Error(`Unknown command: ${args.command}`);
     }
@@ -197,6 +202,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let noInstructions = false;
   let listClients = false;
   let noCommit = false;
+  let check = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -288,6 +294,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === "--check") {
+      check = true;
+      continue;
+    }
+
     if (value) {
       positional.push(value);
     }
@@ -308,6 +319,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     noInstructions,
     listClients,
     noCommit,
+    check,
   };
 }
 
@@ -570,6 +582,18 @@ async function doctor(args: ParsedArgs): Promise<void> {
 
 async function connect(args: ParsedArgs): Promise<void> {
   await setup(args);
+}
+
+async function upgrade(args: ParsedArgs): Promise<void> {
+  const report = await runUpgrade({ check: args.check, yes: args.yes });
+
+  if (args.json) {
+    printJson(report);
+    return;
+  }
+
+  console.log(formatUpgradeReport(report));
+  if (report.status === "error") process.exitCode = 1;
 }
 
 async function dashboard(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
@@ -917,9 +941,11 @@ function printHelp(): void {
 
 Usage:
   groveyard                         Start the stdio MCP server
+  groveyard --version              Print the installed Groveyard version
   groveyard setup [--repo PATH]     Configure this repo and its current coding app
   groveyard setup --client vscode   Configure one explicit coding app
   groveyard setup --all             Configure every detected coding app
+  groveyard upgrade [--check]       Check for or install a global update
   groveyard init [--repo PATH]      Create .groveyard.yml
   groveyard doctor [--repo PATH]    Check repo/config readiness
   groveyard connect <client>        Configure a client through the setup adapters
@@ -930,10 +956,12 @@ Usage:
   groveyard clean <sessionId>       Remove a registered session worktree
 
 Options:
+  -v, --version  Print only the installed semantic version
   --repo PATH   Path inside the Git repository
   --name NAME   MCP server name for connect; defaults to groveyard_<repo>
   --client ID   Configure one client; may be repeated
   --all         Configure every detected client
+  --check       For upgrade, report whether a newer version exists
   --config PATH Generic MCP client JSON configuration
   --no-instructions  Skip native repository instruction blocks
   --list-clients     Show supported clients and automatic selection

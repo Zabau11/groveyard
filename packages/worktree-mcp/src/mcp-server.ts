@@ -3,14 +3,18 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { WorktreeSessionService } from "./lifecycle.js";
+import { getInstalledPackageVersion } from "./runtime-version.js";
 import type { SessionRecord } from "./sessions.js";
 
-export const mcpServerVersion = "0.1.15";
 export const instructionsResourceUri = "groveyard://instructions";
 export const workflowPromptName = "groveyard_session_workflow";
 
 export const sessionPolicy = [
-  "For every code-changing task, first call start_session and pass the current workspace directory so Groveyard can create or adopt the right workspace.",
+  "Before any code-changing task, first call list_sessions and consider only active and completed sessions as continuable.",
+  "For requests to continue, review, validate, commit, clean, or discuss existing work, never create a new session.",
+  "Choose an exact session ID or branch match when present; otherwise use the single clearly matching task. If multiple sessions could match, ask the user and show the task name, status, branch, and session ID.",
+  "Call resume_session before editing a completed match. Only call start_session for a clearly new code-changing request with no matching session.",
+  "If the user asks to continue existing work but no matching session exists, explain that no continuable session was found and do not guess or create a replacement session.",
   "Do not create a session for read-only questions, explanations, planning, status checks, or reviews that will not modify files.",
 ];
 
@@ -26,7 +30,8 @@ export const agentContract = [
 ];
 
 export const recommendedWorkflow = [
-  "start_session",
+  "list_sessions",
+  "resume_session or start_session",
   "list_files or read_file",
   "write_file",
   "run_command_profile when a relevant profile exists",
@@ -49,7 +54,7 @@ export function renderAgentInstructions(taskName = "the user's task"): string {
   return [
     "# Groveyard Agent Instructions",
     "",
-    `Use Groveyard to isolate ${taskName} in a registered Git worktree session whenever the task may change code.`,
+    `Use Groveyard to continue or isolate ${taskName} in a registered Git worktree session whenever the task may change code.`,
     "",
     "## Session Policy",
     ...sessionPolicy.map((line) => `- ${line}`),
@@ -67,10 +72,11 @@ export function renderAgentInstructions(taskName = "the user's task"): string {
 
 export function createMcpServer(): McpServer {
   const sessionService = new WorktreeSessionService();
+  const version = getInstalledPackageVersion();
 
   const server = new McpServer({
     name: "groveyard",
-    version: mcpServerVersion,
+    version,
   });
 
   const repoPathDescription =
@@ -126,7 +132,7 @@ export function createMcpServer(): McpServer {
     async () =>
       jsonResponse("server_info", {
         name: "groveyard",
-        version: mcpServerVersion,
+        version,
         description: "Safe Git worktree sessions for coding agents.",
         status: "mvp",
         instructionsResourceUri,
@@ -140,7 +146,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     "start_session",
-    "Start a Groveyard session for a coding task. Pass the current workspace directory so Groveyard adopts an existing linked worktree when appropriate; otherwise it creates a managed worktree. Adopted worktrees are tracked but never removed by Groveyard.",
+    "Start a Groveyard session for a clearly new coding task with no matching active or completed session. Pass the current workspace directory so Groveyard adopts an existing linked worktree when appropriate; otherwise it creates a managed worktree. Adopted worktrees are tracked but never removed by Groveyard.",
     {
       repoPath: z.string().optional().describe(repoPathDescription),
       taskName: z.string().min(1).describe("Short human-readable task description."),
@@ -184,6 +190,30 @@ export function createMcpServer(): McpServer {
         instructionsResourceUri,
         workflowPromptName,
       });
+    },
+  );
+
+  server.tool(
+    "resume_session",
+    "Resume an existing Groveyard session on the same branch and workspace. Active sessions are returned unchanged. Completed sessions are reactivated only when their worktree exists, the branch still exists, the workspace is clean, and the branch is not already merged into an auto-clean branch.",
+    {
+      repoPath: z.string().optional().describe(repoPathDescription),
+      sessionId: z.string().min(1).describe(sessionIdDescription),
+    },
+    async ({ repoPath, sessionId }) => {
+      const result = await sessionService.resumeSession({ repoPath, sessionId });
+      const session = result.session;
+      return jsonResponse("resume_session", {
+        ...result,
+        nextAction: `Continue work in ${session.worktreePath} on branch ${session.branch}.`,
+      }, [
+        `Continuing session ${session.id} on branch ${session.branch}.`,
+        session.origin === "managed"
+          ? `Work only inside ${session.worktreePath}.`
+          : `Continue in the adopted workspace ${session.worktreePath}; Groveyard will not remove it.`,
+        "Read or list relevant files before overwriting anything.",
+        "After edits, call git_status and git_diff again before any later commit.",
+      ]);
     },
   );
 
@@ -378,7 +408,7 @@ export function createSessionNextSteps(session: Pick<SessionRecord, "id" | "bran
       : `Continue in the adopted workspace ${session.worktreePath}; Groveyard will track but never remove it.`,
     `Keep changes on branch ${session.branch}.`,
     "Start by listing or reading the files relevant to the task.",
-    "For future code-changing tasks, call start_session before implementation work begins.",
+    "For future code-changing tasks, call list_sessions before deciding whether to resume an existing session or start a new one.",
     "Call read_file before overwriting any existing file.",
     "After edits, run a relevant command profile if one exists.",
     "Before your final answer, call git_status and git_diff for this session.",

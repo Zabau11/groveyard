@@ -9,7 +9,9 @@ import {
   classifyEnvironment,
   detectClients,
   getClientAdapters,
+  instructionTargetPaths,
   installInstructionTargets,
+  managedInstructionState,
   validateInstructionTargets,
   type ClientAdapter,
   type ClientId,
@@ -368,6 +370,23 @@ export async function runRepositoryChecks(repoRoot: string, config: WorktreeMcpC
   } catch {
     add({ id: "agent-contract", name: "Agent contract", ok: false, required: true, detail: contractPath, fix: "Run groveyard setup again." });
   }
+
+  const outdatedInstructionFiles: string[] = [];
+  for (const relativePath of instructionTargetPaths()) {
+    const path = join(repoRoot, relativePath);
+    const content = await readOptional(path);
+    if (content && managedInstructionState(content) === "outdated") outdatedInstructionFiles.push(relativePath);
+  }
+  add({
+    id: "instruction-version",
+    name: "Native instruction blocks",
+    ok: outdatedInstructionFiles.length === 0,
+    required: true,
+    detail: outdatedInstructionFiles.length === 0
+      ? "Groveyard session-continuity instructions are current"
+      : `Groveyard session-continuity instructions are outdated in ${outdatedInstructionFiles.join(", ")}.`,
+    fix: outdatedInstructionFiles.length === 0 ? undefined : "Run groveyard setup to update them.",
+  });
 
   const gitignore = await readOptional(join(repoRoot, ".gitignore"));
   const missingIgnores = ignoreEntries.filter((entry) => !hasIgnoreEntry(gitignore ?? "", entry));

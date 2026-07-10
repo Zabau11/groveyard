@@ -33,10 +33,18 @@ npx -y @groveyard/mcp setup --all
 
 Use `--json` for one machine-readable report, `--yes` for explicit headless automation, `--no-instructions` to skip native instruction blocks, and `--force` to regenerate `.groveyard.yml`. Existing valid `.groveyard.yml` content is preserved byte-for-byte by default.
 
-The scoped package remains available for compatibility:
+Check the installed version and updater status with:
 
 ```bash
-npx -y @groveyard/mcp setup
+groveyard --version
+groveyard upgrade --check
+groveyard upgrade
+```
+
+For a one-time latest run without installing globally:
+
+```bash
+npx -y @groveyard/mcp@latest setup
 ```
 
 ## What the agent does

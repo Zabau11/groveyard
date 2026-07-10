@@ -186,6 +186,119 @@ test("cleanup releases an adopted worktree without removing files or the branch"
   assert.notEqual(readopted.session.id, released.id);
 });
 
+test("resumeSession is idempotent for active sessions and reactivates completed sessions", async () => {
+  const repo = await createRepo();
+  const service = new WorktreeSessionService();
+  const created = await service.createSession({
+    repoPath: repo,
+    taskName: "Refine palette",
+    baseBranch: "main",
+  });
+
+  const alreadyActive = await service.resumeSession({ repoPath: repo, sessionId: created.id });
+  assert.equal(alreadyActive.action, "already_active");
+  assert.equal(alreadyActive.session.id, created.id);
+
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({ repoPath: repo, sessionId: created.id, path: "README.md", content: "# Palette\n" });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  const committed = await service.commitSession({ repoPath: repo, sessionId: created.id, message: "Palette pass one" });
+  assert.equal(committed.session.status, "completed");
+
+  const resumed = await service.resumeSession({ repoPath: repo, sessionId: created.id });
+  assert.equal(resumed.action, "resumed");
+  assert.equal(resumed.session.id, created.id);
+  assert.equal(resumed.session.status, "active");
+  assert.deepEqual(resumed.session.contract.readPaths, []);
+  assert.equal((await service.getSession({ repoPath: repo, sessionId: created.id })).status, "active");
+
+  await assert.rejects(
+    () => service.writeFile({ repoPath: repo, sessionId: created.id, path: "README.md", content: "# Palette v2\n" }),
+    /read_file must be called/,
+  );
+  await service.readFile({ repoPath: repo, sessionId: created.id, path: "README.md" });
+  await service.writeFile({ repoPath: repo, sessionId: created.id, path: "README.md", content: "# Palette v2\n" });
+  await service.gitDiff({ repoPath: repo, sessionId: created.id });
+  await service.gitStatus({ repoPath: repo, sessionId: created.id });
+  const recommitted = await service.commitSession({ repoPath: repo, sessionId: created.id, message: "Palette pass two" });
+  assert.equal(recommitted.session.status, "completed");
+});
+
+test("resumeSession rejects merged, dirty, missing, and unavailable sessions", async () => {
+  {
+    const repo = await createRepo();
+    const service = new WorktreeSessionService();
+    const merged = await service.createSession({ repoPath: repo, taskName: "Merged work", baseBranch: "main" });
+    await service.readFile({ repoPath: repo, sessionId: merged.id, path: "README.md" });
+    await service.writeFile({ repoPath: repo, sessionId: merged.id, path: "README.md", content: "# Merged\n" });
+    await service.gitDiff({ repoPath: repo, sessionId: merged.id });
+    await service.gitStatus({ repoPath: repo, sessionId: merged.id });
+    await service.commitSession({ repoPath: repo, sessionId: merged.id, message: "Merged work" });
+    await git(repo, ["merge", "--ff-only", merged.branch]);
+    await assert.rejects(() => service.resumeSession({ repoPath: repo, sessionId: merged.id }), /cleaned|merged/);
+  }
+
+  {
+    const repo = await createRepo();
+    const service = new WorktreeSessionService();
+    const dirty = await service.createSession({ repoPath: repo, taskName: "Dirty work", baseBranch: "main" });
+    await service.readFile({ repoPath: repo, sessionId: dirty.id, path: "README.md" });
+    await service.writeFile({ repoPath: repo, sessionId: dirty.id, path: "README.md", content: "# Dirty\n" });
+    await service.gitDiff({ repoPath: repo, sessionId: dirty.id });
+    await service.gitStatus({ repoPath: repo, sessionId: dirty.id });
+    await service.commitSession({ repoPath: repo, sessionId: dirty.id, message: "Dirty work" });
+    await writeFile(join(dirty.worktreePath, "dirty.txt"), "dirty\n", "utf8");
+    await assert.rejects(() => service.resumeSession({ repoPath: repo, sessionId: dirty.id }), /uncommitted changes/);
+  }
+
+  {
+    const repo = await createRepo();
+    const service = new WorktreeSessionService();
+    const missingBranch = await service.createSession({ repoPath: repo, taskName: "Missing branch", baseBranch: "main" });
+    await service.readFile({ repoPath: repo, sessionId: missingBranch.id, path: "README.md" });
+    await service.writeFile({ repoPath: repo, sessionId: missingBranch.id, path: "README.md", content: "# Missing branch\n" });
+    await service.gitDiff({ repoPath: repo, sessionId: missingBranch.id });
+    await service.gitStatus({ repoPath: repo, sessionId: missingBranch.id });
+    await service.commitSession({ repoPath: repo, sessionId: missingBranch.id, message: "Missing branch" });
+    await new JsonSessionStore(join(repo, ".groveyard", "sessions.json")).update(missingBranch.id, (session) => ({
+      ...session,
+      branch: "missing/branch",
+    }));
+    await assert.rejects(() => service.resumeSession({ repoPath: repo, sessionId: missingBranch.id }), /no longer exists/);
+  }
+
+  {
+    const cleanRepo = await createRepo();
+    const cleanService = new WorktreeSessionService();
+    const cleaned = await cleanService.createSession({ repoPath: cleanRepo, taskName: "Cleaned work", baseBranch: "main" });
+    await cleanService.cleanupSession({ repoPath: cleanRepo, sessionId: cleaned.id });
+    await assert.rejects(() => cleanService.resumeSession({ repoPath: cleanRepo, sessionId: cleaned.id }), /is cleaned/);
+  }
+});
+
+test("resumeSession preserves adopted-session ownership", async () => {
+  const repo = await createRepo();
+  const linked = await mkdtemp(join(tmpdir(), "groveyard-resume-adopted-"));
+  await git(repo, ["worktree", "add", "-b", "native/resume-adopted", linked, "main"]);
+  const service = new WorktreeSessionService();
+  const adopted = await service.startSession({ repoPath: repo, workspacePath: linked, taskName: "Resume adopted" });
+
+  await service.readFile({ repoPath: repo, sessionId: adopted.session.id, path: "README.md" });
+  await service.writeFile({ repoPath: repo, sessionId: adopted.session.id, path: "README.md", content: "# Adopted\n" });
+  await service.gitDiff({ repoPath: repo, sessionId: adopted.session.id });
+  await service.gitStatus({ repoPath: repo, sessionId: adopted.session.id });
+  await service.commitSession({ repoPath: repo, sessionId: adopted.session.id, message: "Adopted pass one" });
+
+  const resumed = await service.resumeSession({ repoPath: repo, sessionId: adopted.session.id });
+  assert.equal(resumed.action, "resumed");
+  assert.equal(resumed.session.origin, "adopted");
+
+  const released = await service.cleanupSession({ repoPath: repo, sessionId: adopted.session.id });
+  assert.equal(released.status, "released");
+  assert.equal(existsSync(linked), true);
+});
+
 test("reconciliation releases adopted worktrees after external removal or merge", async () => {
   const repo = await createRepo();
   const removedPath = await mkdtemp(join(tmpdir(), "groveyard-external-remove-"));
