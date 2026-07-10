@@ -20,11 +20,23 @@ import {
   type SetupEnvironment,
 } from "./client-adapters.js";
 import { loadConfig, type WorktreeMcpConfig } from "./config.js";
-import { getCurrentBranch, gitStatusShort, parseWorktreeListPorcelain, resolveRepoRoot, runGit } from "./git.js";
+import {
+  GitCommandError,
+  commitSpecificPaths,
+  getCurrentBranch,
+  getCurrentBranchOrUnborn,
+  getRefSha,
+  gitStatusShort,
+  listCommitPaths,
+  parseWorktreeListPorcelain,
+  readGitIdentity,
+  resolveRepoRoot,
+  runGit,
+} from "./git.js";
 import { createMcpServer, renderAgentInstructions } from "./mcp-server.js";
 import { JsonSessionStore } from "./session-store.js";
 
-export type SetupStatus = "ready" | "manual_connection_required" | "error";
+export type SetupStatus = "ready" | "manual_connection_required" | "commit_required" | "error";
 
 export type SetupCheck = {
   id: string;
@@ -45,6 +57,7 @@ export type SetupOptions = {
   force?: boolean;
   configPath?: string;
   noInstructions?: boolean;
+  noCommit?: boolean;
 };
 
 export type SetupReport = {
@@ -55,6 +68,12 @@ export type SetupReport = {
     config: "created" | "regenerated" | "preserved";
     agentInstructions: "created" | "updated" | "unchanged";
     gitignoreEntriesAdded: string[];
+  };
+  commit: {
+    action: "created" | "unchanged" | "skipped" | "failed";
+    sha?: string;
+    message?: string;
+    files: string[];
   };
   readiness: {
     ok: boolean;
@@ -77,28 +96,24 @@ export type SetupReport = {
 const configFileName = ".groveyard.yml";
 const agentContractRelativePath = join(".groveyard", "AGENTS.md");
 const ignoreEntries = [".agent-worktrees/", ".groveyard/"];
+const setupCommitMessage = "chore: configure Groveyard";
 
 export async function setupGroveyard(options: SetupOptions): Promise<SetupReport> {
   const environment = classifyEnvironment();
   const requestedPath = resolve(options.repoPath ?? process.cwd());
   let repoRoot = requestedPath;
   let serverName = "groveyard";
+  const initialization = {
+    config: "preserved" as const,
+    agentInstructions: "unchanged" as const,
+    gitignoreEntriesAdded: [],
+  };
+  const emptyCommit = { action: "unchanged" as const, files: [] as string[] };
 
   try {
     repoRoot = await resolveRepoRoot(requestedPath);
     serverName = resolveServerName(repoRoot, options.name);
     const configPath = join(repoRoot, configFileName);
-
-    // Existing user configuration is validated before setup writes anything.
-    if (existsSync(configPath) && !options.force) await loadConfig(repoRoot);
-
-    const initialization = await initializeRepository(repoRoot, Boolean(options.force));
-    const config = await loadConfig(repoRoot);
-    const readiness = await runRepositoryChecks(repoRoot, config);
-    if (!readiness.ok) {
-      return errorReport(repoRoot, environment, serverName, initialization, readiness, "A required repository readiness check failed.");
-    }
-
     const context: SetupContext = {
       repoRoot,
       serverName,
@@ -108,14 +123,52 @@ export async function setupGroveyard(options: SetupOptions): Promise<SetupReport
       noInstructions: options.noInstructions,
     };
 
+    // Existing user configuration is validated before setup writes anything.
+    if (existsSync(configPath) && !options.force) await loadConfig(repoRoot);
     const detected = await detectClients(context);
     const selected = selectAdapters(detected, options);
     await validateInstructionTargets(context, selected);
 
     const preflight = await Promise.all(selected.map(async (adapter) => ({ adapter, state: await adapter.inspect(context) })));
     const malformed = new Map(preflight.filter((item) => !item.state.valid).map((item) => [item.adapter.id, item.state.error ?? "Malformed configuration."]));
+    await requireCleanSetupBranch(repoRoot);
+    await readGitIdentity(repoRoot);
+    await getCurrentBranchOrUnborn(repoRoot);
 
-    const instructions = await installInstructionTargets(context, selected.filter((adapter) => !malformed.has(adapter.id)));
+    const repositoryWrite = await initializeRepository(repoRoot, context, selected, Boolean(options.force));
+    const commitFiles = repositoryWrite.commitFiles;
+    const commit = await commitRepositorySetup(repoRoot, commitFiles, Boolean(options.noCommit));
+    const instructions = repositoryWrite.instructions;
+
+    const readiness = await runRepositoryChecks(repoRoot, await loadConfig(repoRoot));
+    if (commit.action === "failed") {
+      return errorReport(repoRoot, environment, serverName, repositoryWrite.initialization, commit, readiness, commit.message ?? "Failed to create the setup commit.");
+    }
+
+    if (commit.action === "skipped" && commit.files.length > 0) {
+      return {
+        status: "commit_required",
+        repoRoot,
+        environment,
+        initialization: repositoryWrite.initialization,
+        commit,
+        readiness,
+        connection: {
+          serverName,
+          selectedClientIds: selected.map((adapter) => adapter.id),
+          targets: [],
+          instructions,
+          manualConfigs: selected.length > 0 ? selected.map((adapter) => adapter.renderManualInstructions(context)) : manualDefaults().map((adapter) => adapter.renderManualInstructions(context)),
+          otherDetectedClients: detected
+            .filter((item) => item.detection.detected && !selected.some((adapter) => adapter.id === item.adapter.id) && item.adapter.id !== "generic")
+            .map((item) => ({ id: item.adapter.id, name: item.adapter.name })),
+          codexToml: getClientAdapters().find((adapter) => adapter.id === "codex")!.renderManualInstructions(context).content,
+          mcpJson: getClientAdapters().find((adapter) => adapter.id === "generic")!.renderManualInstructions(context).content,
+        },
+        nextSteps: [`Commit the generated files with: git add -- ${commit.files.join(" ")} && git commit -m "${setupCommitMessage}"`, "Run groveyard setup again after the commit."],
+      };
+    }
+
     const targets: ClientSetupResult[] = [];
 
     for (const adapter of selected) {
@@ -152,7 +205,7 @@ export async function setupGroveyard(options: SetupOptions): Promise<SetupReport
 
     const failed = targets.some((target) => target.action === "failed");
     const verified = targets.filter((target) => target.verified);
-    const status: SetupStatus = failed ? "error" : verified.length > 0 ? "ready" : "manual_connection_required";
+    const status: SetupStatus = failed ? "error" : verified.length > 0 && readiness.ok ? "ready" : "manual_connection_required";
     const selectedIds = selected.map((adapter) => adapter.id);
     const otherDetectedClients = detected
       .filter((item) => item.detection.detected && !selectedIds.includes(item.adapter.id) && item.adapter.id !== "generic")
@@ -166,7 +219,8 @@ export async function setupGroveyard(options: SetupOptions): Promise<SetupReport
       status,
       repoRoot,
       environment,
-      initialization,
+      initialization: repositoryWrite.initialization,
+      commit,
       readiness,
       connection: {
         serverName,
@@ -182,16 +236,12 @@ export async function setupGroveyard(options: SetupOptions): Promise<SetupReport
       error: failed ? targets.find((target) => target.action === "failed")?.error : undefined,
     };
   } catch (error) {
-    const initialization = {
-      config: "preserved" as const,
-      agentInstructions: "unchanged" as const,
-      gitignoreEntriesAdded: [],
-    };
     return errorReport(
       repoRoot,
       environment,
       serverName,
       initialization,
+      emptyCommit,
       { ok: false, checks: [] },
       error instanceof Error ? error.message : String(error),
     );
@@ -227,22 +277,44 @@ export async function listClientDetection(options: Pick<SetupOptions, "repoPath"
   };
 }
 
-async function initializeRepository(repoRoot: string, force: boolean): Promise<SetupReport["initialization"]> {
+async function initializeRepository(
+  repoRoot: string,
+  context: SetupContext,
+  selected: ClientAdapter[],
+  force: boolean,
+): Promise<{
+  initialization: SetupReport["initialization"];
+  instructions: InstructionResult[];
+  commitFiles: string[];
+}> {
   const configPath = join(repoRoot, configFileName);
   const configExists = existsSync(configPath);
   let configAction: SetupReport["initialization"]["config"] = "preserved";
+  const commitFiles = new Set<string>();
 
   if (!configExists || force) {
     const commands = await detectCommandProfiles(repoRoot);
     const next = renderConfig(commands);
     const existing = configExists ? await readFile(configPath, "utf8") : undefined;
-    if (existing !== next) await atomicWrite(configPath, next);
+    if (existing !== next) {
+      await atomicWrite(configPath, next);
+      commitFiles.add(configFileName);
+    }
     configAction = configExists ? "regenerated" : "created";
   }
 
   const agentInstructions = await writeIfChanged(join(repoRoot, agentContractRelativePath), `${renderAgentInstructions()}\n`);
   const gitignoreEntriesAdded = await ensureGitignore(repoRoot);
-  return { config: configAction, agentInstructions, gitignoreEntriesAdded };
+  if (gitignoreEntriesAdded.length > 0) commitFiles.add(".gitignore");
+  const instructions = await installInstructionTargets(context, selected);
+  for (const instruction of instructions) {
+    if (instruction.action !== "unchanged") commitFiles.add(relative(repoRoot, instruction.path));
+  }
+  return {
+    initialization: { config: configAction, agentInstructions, gitignoreEntriesAdded },
+    instructions,
+    commitFiles: [...commitFiles].sort(),
+  };
 }
 
 export async function runRepositoryChecks(repoRoot: string, config: WorktreeMcpConfig): Promise<SetupReport["readiness"]> {
@@ -252,8 +324,8 @@ export async function runRepositoryChecks(repoRoot: string, config: WorktreeMcpC
   add({ id: "repository", name: "Repository", ok: true, required: true, detail: repoRoot });
 
   try {
-    const branch = await getCurrentBranch(repoRoot);
-    add({ id: "base-ref", name: "Current branch", ok: branch !== "HEAD", required: true, detail: branch, fix: branch === "HEAD" ? "Check out a named branch." : undefined });
+    const branch = await getCurrentBranchOrUnborn(repoRoot);
+    add({ id: "base-ref", name: "Current branch", ok: true, required: true, detail: branch });
   } catch (error) {
     add({ id: "base-ref", name: "Current branch", ok: false, required: true, detail: errorMessage(error), fix: "Create or check out a Git branch." });
   }
@@ -313,8 +385,9 @@ export async function runRepositoryChecks(repoRoot: string, config: WorktreeMcpC
     id: "base-cleanliness",
     name: "Base checkout cleanliness",
     ok: status.length === 0,
-    required: false,
-    detail: status.length === 0 ? "clean" : `${status.split(/\r?\n/).filter(Boolean).length} changed file(s); setup may have created configuration files`,
+    required: true,
+    detail: status.length === 0 ? "clean" : `${status.split(/\r?\n/).filter(Boolean).length} changed file(s)`,
+    fix: status.length === 0 ? undefined : "Commit or stash the current checkout before running start_session.",
   });
 
   const sessionStoreDirectory = join(repoRoot, ".groveyard");
@@ -403,6 +476,7 @@ function setupNextSteps(
   others: Array<{ id: ClientId; name: string }>,
 ): string[] {
   if (status === "error") return ["Fix the failed check, then run groveyard setup again."];
+  if (status === "commit_required") return ["Create the setup commit, then rerun groveyard setup."];
   if (status === "manual_connection_required") {
     return ["Add one of the provided MCP configurations in the coding app that runs on this filesystem.", "Restart the app and run groveyard doctor."];
   }
@@ -418,6 +492,7 @@ function errorReport(
   environment: SetupEnvironment,
   serverName: string,
   initialization: SetupReport["initialization"],
+  commit: SetupReport["commit"],
   readiness: SetupReport["readiness"],
   error: string,
 ): SetupReport {
@@ -426,6 +501,7 @@ function errorReport(
     repoRoot,
     environment,
     initialization,
+    commit,
     readiness,
     connection: {
       serverName,
@@ -446,6 +522,49 @@ function resolveServerName(repoRoot: string, explicit: string | undefined): stri
   const value = explicit ?? `groveyard_${basename(repoRoot).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "repo"}`;
   if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("MCP server name may contain only letters, numbers, underscores, and hyphens.");
   return value;
+}
+
+async function requireCleanSetupBranch(repoRoot: string): Promise<void> {
+  const status = await gitStatusShort(repoRoot);
+  if (!status) return;
+  throw new Error(`Repository has uncommitted or staged changes. Commit or stash them before running setup:\n${status}`);
+}
+
+async function commitRepositorySetup(
+  repoRoot: string,
+  files: string[],
+  noCommit: boolean,
+): Promise<SetupReport["commit"]> {
+  if (files.length === 0) {
+    return { action: "unchanged", files: [] };
+  }
+
+  if (noCommit) {
+    return { action: "skipped", message: setupCommitMessage, files };
+  }
+
+  try {
+    const commit = await commitSpecificPaths(repoRoot, files, setupCommitMessage);
+    const committedFiles = await listCommitPaths(repoRoot, commit.sha);
+    const expected = new Set(files);
+    const actual = new Set(committedFiles);
+    if (committedFiles.length !== files.length || files.some((file) => !actual.has(file))) {
+      throw new Error(`Setup commit ${commit.sha} did not contain the expected files.`);
+    }
+    await getRefSha(repoRoot, "HEAD");
+    const status = await gitStatusShort(repoRoot);
+    if (status) {
+      throw new Error(`Setup commit ${commit.sha} succeeded, but the checkout is not clean:\n${status}`);
+    }
+    return { action: "created", sha: commit.sha, message: commit.message, files: [...expected] };
+  } catch (error) {
+    const details = error instanceof GitCommandError && error.output ? `\n${error.output}` : "";
+    return {
+      action: "failed",
+      message: `${error instanceof Error ? error.message : String(error)}${details}`,
+      files,
+    };
+  }
 }
 
 async function detectCommandProfiles(repoRoot: string): Promise<Record<string, string>> {

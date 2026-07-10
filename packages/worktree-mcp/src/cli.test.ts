@@ -429,9 +429,11 @@ async function createRepo(): Promise<string> {
   const repo = await mkdtemp(join(tmpdir(), "groveyard-cli-repo-"));
 
   await git(repo, ["init", "-b", "main"]);
+  await git(repo, ["config", "user.name", "Test User"]);
+  await git(repo, ["config", "user.email", "test@example.com"]);
   await writeFile(join(repo, "README.md"), "# Test\n", "utf8");
   await git(repo, ["add", "README.md"]);
-  await git(repo, ["-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"]);
+  await git(repo, ["commit", "-m", "Initial commit"]);
 
   return realpath(repo);
 }

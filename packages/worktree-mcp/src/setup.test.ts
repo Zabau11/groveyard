@@ -34,6 +34,26 @@ test("setup configures a fresh repository for an explicit Codex client", async (
   assert.match(codex, new RegExp(escapeRegExp(repo)));
 });
 
+test("setup creates one scoped setup commit and leaves the checkout clean", async () => {
+  const repo = await createRepo();
+  const home = await createHome();
+  await mkdir(join(home, ".codex"), { recursive: true });
+
+  const report = await runSetup(repo, home, ["--client", "codex", "--json"]);
+  assert.equal(report.status, "ready");
+  assert.equal(report.commit.action, "created");
+  assert.equal(report.commit.message, "chore: configure Groveyard");
+  assert.ok(report.commit.sha);
+  assert.deepEqual(new Set(report.commit.files), new Set([".gitignore", ".groveyard.yml", "AGENTS.md"]));
+
+  const headFiles = (await execFileAsync("git", ["show", "--pretty=format:", "--name-only", "HEAD"], { cwd: repo })).stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  assert.deepEqual(new Set(headFiles), new Set(report.commit.files));
+  assert.equal((await execFileAsync("git", ["status", "--short"], { cwd: repo })).stdout.trim(), "");
+});
+
 test("setup selects the current VS Code environment and leaves other detected clients untouched", async () => {
   const repo = await createRepo();
   const home = await createHome();
@@ -57,6 +77,8 @@ test("setup is idempotent and preserves repository config and unrelated client s
   const home = await createHome();
   const customConfig = "worktreesRoot: .custom-worktrees\nbranchPrefix: custom/\nallowDirtyBase: true\ncommands: {}\n";
   await writeFile(join(repo, ".groveyard.yml"), customConfig, "utf8");
+  await execFileAsync("git", ["add", ".groveyard.yml"], { cwd: repo });
+  await execFileAsync("git", ["commit", "-m", "Add custom Groveyard config"], { cwd: repo });
   await mkdir(join(home, ".codex"), { recursive: true });
   await writeFile(join(home, ".codex", "config.toml"), "[features]\nweb_search = true\n", "utf8");
 
@@ -79,11 +101,25 @@ test("setup --force regenerates an existing repository configuration", async () 
   const home = await createHome();
   await mkdir(join(home, ".codex"), { recursive: true });
   await writeFile(join(repo, ".groveyard.yml"), "worktreesRoot: .old\nbranchPrefix: old/\ncommands: {}\n", "utf8");
+  await execFileAsync("git", ["add", ".groveyard.yml"], { cwd: repo });
+  await execFileAsync("git", ["commit", "-m", "Add stale Groveyard config"], { cwd: repo });
 
   const report = await runSetup(repo, home, ["--client", "codex", "--force", "--json"]);
   assert.equal(report.status, "ready");
   assert.equal(report.initialization.config, "regenerated");
   assert.match(await readFile(join(repo, ".groveyard.yml"), "utf8"), /worktreesRoot: \.agent-worktrees/);
+});
+
+test("setup supports an unborn repository and creates the initial setup commit", async () => {
+  const repo = await createUnbornRepo();
+  const home = await createHome();
+  await mkdir(join(home, ".codex"), { recursive: true });
+
+  const report = await runSetup(repo, home, ["--client", "codex", "--json"]);
+  assert.equal(report.status, "ready");
+  assert.equal(report.commit.action, "created");
+  assert.match(String(report.commit.sha), /^[a-f0-9]{40}$/);
+  assert.equal((await execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo })).stdout.trim(), "main");
 });
 
 test("invalid existing Groveyard configuration fails before repository or client files change", async () => {
@@ -142,6 +178,7 @@ test("malformed selected client JSON is left unchanged and produces manual instr
 
   const report = await runSetup(repo, home, ["--client", "vscode", "--json"]);
   assert.equal(report.status, "manual_connection_required");
+  assert.equal(report.commit.action, "created");
   assert.equal(report.connection.targets[0]?.action, "manual");
   assert.match(report.connection.targets[0]?.error ?? "", /malformed/i);
   assert.equal(await readFile(configPath, "utf8"), "{ malformed");
@@ -176,6 +213,31 @@ test("setup --all configures every detected client but default setup configures 
   const allReport = await runSetup(repo, home, ["--all", "--json"]);
   assert.deepEqual(new Set(allReport.connection.selectedClientIds), new Set(["codex", "vscode"]));
   assert.equal(allReport.connection.targets.every((target: { verified: boolean }) => target.verified), true);
+});
+
+test("setup --no-commit leaves generated files uncommitted and skips client configuration", async () => {
+  const repo = await createRepo();
+  const home = await createHome();
+  await mkdir(join(home, ".codex"), { recursive: true });
+
+  const report = await runSetupFailure(repo, home, ["--client", "codex", "--no-commit", "--json"]);
+  assert.equal(report.status, "commit_required");
+  assert.equal(report.commit.action, "skipped");
+  assert.deepEqual(new Set(report.commit.files), new Set([".gitignore", ".groveyard.yml", "AGENTS.md"]));
+  assert.equal(existsSync(join(home, ".codex", "config.toml")), false);
+  assert.match((await execFileAsync("git", ["status", "--short"], { cwd: repo })).stdout, /\.groveyard\.yml/);
+});
+
+test("missing Git identity fails before repository or client files are written", async () => {
+  const repo = await createRepoWithoutIdentity();
+  const home = await createHome();
+  await mkdir(join(home, ".codex"), { recursive: true });
+
+  const report = await runSetupFailure(repo, home, ["--client", "codex", "--json"]);
+  assert.equal(report.status, "error");
+  assert.match(report.error ?? "", /git config user\.name/);
+  assert.equal(existsSync(join(repo, ".groveyard.yml")), false);
+  assert.equal(existsSync(join(home, ".codex", "config.toml")), false);
 });
 
 test("setup --help does not create repository files", async () => {
@@ -278,9 +340,37 @@ async function createHome(): Promise<string> {
 async function createRepo(): Promise<string> {
   const repo = await mkdtemp(join(tmpdir(), "groveyard-setup-repo-"));
   await execFileAsync("git", ["init", "-b", "main"], { cwd: repo });
+  await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: repo });
+  await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
   await writeFile(join(repo, "README.md"), "# Test\n", "utf8");
   await execFileAsync("git", ["add", "README.md"], { cwd: repo });
-  await execFileAsync("git", ["-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"], { cwd: repo });
+  await execFileAsync("git", ["commit", "-m", "Initial commit"], { cwd: repo });
+  return realpath(repo);
+}
+
+async function createUnbornRepo(): Promise<string> {
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-setup-unborn-repo-"));
+  await execFileAsync("git", ["init", "-b", "main"], { cwd: repo });
+  await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: repo });
+  await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+  return realpath(repo);
+}
+
+async function createRepoWithoutIdentity(): Promise<string> {
+  const repo = await mkdtemp(join(tmpdir(), "groveyard-setup-no-identity-repo-"));
+  await execFileAsync("git", ["init", "-b", "main"], { cwd: repo });
+  await writeFile(join(repo, "README.md"), "# Test\n", "utf8");
+  await execFileAsync("git", ["add", "README.md"], { cwd: repo });
+  await execFileAsync("git", ["commit", "-m", "Initial commit"], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test User",
+      GIT_AUTHOR_EMAIL: "test@example.com",
+      GIT_COMMITTER_NAME: "Test User",
+      GIT_COMMITTER_EMAIL: "test@example.com",
+    },
+  });
   return realpath(repo);
 }
 

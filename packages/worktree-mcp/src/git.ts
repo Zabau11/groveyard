@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { copyFile, realpath, rm } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -221,6 +221,11 @@ export type GitCommitResult = {
   message: string;
 };
 
+export type GitIdentity = {
+  name: string;
+  email: string;
+};
+
 export async function commitAllChanges(worktreePath: string, message: string): Promise<GitCommitResult> {
   const status = await runGit(worktreePath, ["status", "--porcelain"]);
 
@@ -238,9 +243,99 @@ export async function commitAllChanges(worktreePath: string, message: string): P
   };
 }
 
+export async function getCurrentBranchOrUnborn(repoRoot: string): Promise<string> {
+  try {
+    return await runGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      try {
+        const branch = await getCurrentBranch(repoRoot);
+        if (branch && branch !== "HEAD") return branch;
+      } catch {
+        // Fall through to the branch error below.
+      }
+      throw new Error("Cannot determine the current branch. Check out a named branch before running setup.");
+    }
+
+    throw error;
+  }
+}
+
+export async function readGitIdentity(repoRoot: string): Promise<GitIdentity> {
+  const [name, email] = await Promise.all([
+    readGitConfigValue(repoRoot, "user.name"),
+    readGitConfigValue(repoRoot, "user.email"),
+  ]);
+
+  if (!name || !email) {
+    throw new Error(
+      [
+        "Git author identity is not configured.",
+        "Run:",
+        "  git config user.name \"Your Name\"",
+        "  git config user.email \"you@example.com\"",
+      ].join("\n"),
+    );
+  }
+
+  return { name, email };
+}
+
+export async function commitSpecificPaths(repoRoot: string, paths: string[], message: string): Promise<GitCommitResult> {
+  if (paths.length === 0) {
+    throw new Error("No setup files were selected for commit.");
+  }
+
+  const indexPath = await resolveGitPath(repoRoot, "index");
+  const backupPath = `${indexPath}.groveyard-backup-${process.pid}-${Date.now()}`;
+  const hadIndex = await pathExists(indexPath);
+  if (hadIndex) await copyFile(indexPath, backupPath);
+
+  try {
+    await runGit(repoRoot, ["add", "--", ...paths]);
+    await runGit(repoRoot, ["commit", "-m", message]);
+    const sha = await runGit(repoRoot, ["rev-parse", "HEAD"]);
+    return { sha, message };
+  } catch (error) {
+    if (hadIndex) await copyFile(backupPath, indexPath);
+    else await rm(indexPath, { force: true });
+    throw error;
+  } finally {
+    if (hadIndex) await rm(backupPath, { force: true });
+  }
+}
+
+export async function listCommitPaths(repoRoot: string, ref: string): Promise<string[]> {
+  const output = await runGit(repoRoot, ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", ref]);
+  return output.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
 async function gitUntrackedFiles(worktreePath: string): Promise<string[]> {
   const stdout = await runGit(worktreePath, ["ls-files", "--others", "--exclude-standard"]);
   return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+async function readGitConfigValue(repoRoot: string, key: string): Promise<string> {
+  try {
+    return await runGit(repoRoot, ["config", "--get", key]);
+  } catch (error) {
+    if (error instanceof GitCommandError) return "";
+    throw error;
+  }
+}
+
+async function resolveGitPath(repoRoot: string, path: string): Promise<string> {
+  const resolvedPath = await runGit(repoRoot, ["rev-parse", "--git-path", path]);
+  return isAbsolute(resolvedPath) ? resolvedPath : resolve(repoRoot, resolvedPath);
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await realpath(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function gitDiffUntrackedFile(worktreePath: string, filePath: string): Promise<string> {

@@ -26,6 +26,7 @@ type ParsedArgs = {
   configPath?: string;
   noInstructions: boolean;
   listClients: boolean;
+  noCommit: boolean;
 };
 
 type StyleColor = "bold" | "dim" | "green" | "cyan" | "yellow" | "red";
@@ -195,6 +196,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let configPath: string | undefined;
   let noInstructions = false;
   let listClients = false;
+  let noCommit = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const value = rest[index];
@@ -281,6 +283,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
 
+    if (value === "--no-commit") {
+      noCommit = true;
+      continue;
+    }
+
     if (value) {
       positional.push(value);
     }
@@ -300,6 +307,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     configPath,
     noInstructions,
     listClients,
+    noCommit,
   };
 }
 
@@ -332,6 +340,7 @@ async function setup(args: ParsedArgs): Promise<void> {
     force: args.force,
     configPath: args.configPath,
     noInstructions: args.noInstructions,
+    noCommit: args.noCommit,
   });
 
   if (args.json && args.command === "connect") {
@@ -348,7 +357,7 @@ async function setup(args: ParsedArgs): Promise<void> {
     });
   } else if (args.json) printJson(report);
   else printSetupReport(report, args.command === "connect" ? "Connect" : "Setup");
-  if (report.status === "error") process.exitCode = 1;
+  if (report.status === "error" || report.status === "commit_required") process.exitCode = 1;
 }
 
 function normalizedClientSelection(args: ParsedArgs): ClientId[] {
@@ -382,6 +391,17 @@ function printSetupReport(report: SetupReport, heading = "Setup"): void {
     instructionActions.length > 0 ? "green" : "dim",
   );
 
+  const commitOk = report.commit.action === "created" || report.commit.action === "unchanged";
+  const commitLabel = report.commit.action === "created"
+    ? "Created setup commit"
+    : report.commit.action === "unchanged"
+      ? "Repository setup already committed"
+      : report.commit.action === "skipped"
+        ? "Commit required before Groveyard is ready"
+        : "Setup commit failed";
+  const commitColor: StyleColor = report.commit.action === "skipped" ? "yellow" : commitOk ? "green" : "red";
+  printSetupLine(commitOk, commitLabel, report.commit.sha ? report.commit.sha.slice(0, 7) : report.commit.files.join(", ") || undefined, commitColor);
+
   const verificationOk = configured.length > 0 && report.status === "ready";
   printSetupLine(verificationOk, verificationOk ? "Verified connection" : "Connection not yet verified", undefined, verificationOk ? "green" : "yellow");
 
@@ -393,6 +413,13 @@ function printSetupReport(report: SetupReport, heading = "Setup"): void {
   console.log("");
   if (report.status === "ready") {
     console.log(style("Groveyard is ready.", "green"));
+  } else if (report.status === "commit_required") {
+    console.log(style("Repository files were generated, but a setup commit is still required.", "yellow"));
+    if (report.commit.files.length > 0) {
+      console.log("");
+      console.log(style(`Commit these paths: ${report.commit.files.join(", ")}`, "dim"));
+      console.log(style(`git add -- ${report.commit.files.join(" ")} && git commit -m "chore: configure Groveyard"`, "dim"));
+    }
   } else if (report.status === "manual_connection_required") {
     console.log(style("Repository setup is complete; connect one coding app manually.", "yellow"));
     for (const manual of report.connection.manualConfigs.slice(0, 3)) {
@@ -910,6 +937,7 @@ Options:
   --config PATH Generic MCP client JSON configuration
   --no-instructions  Skip native repository instruction blocks
   --list-clients     Show supported clients and automatic selection
+  --no-commit    Leave generated repository files uncommitted
   --json        Print JSON output for CLI commands
   --plain       Print non-interactive session rows for sessions
   --force       Overwrite files for commands that support it
