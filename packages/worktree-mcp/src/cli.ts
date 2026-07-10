@@ -125,8 +125,8 @@ type HandoffReport = {
 
 const groveyardIgnoreEntries = [".agent-worktrees/", ".groveyard/"];
 const agentInstructionsPath = join(".groveyard", "AGENTS.md");
-const groveyardAscii = `  ____                                      __
- / ___|_ __ _____   _____ _   _  __ _ _ __ __| |
+const groveyardAscii = `  ____                                       __
+ / ___|_ __ _____   _____ _   _  __ _ _ __ __| |                     
 | |  _| '__/ _ \\ \\ / / _ \\ | | |/ _\` | '__/ _\` |
 | |_| | | | (_) \\ V /  __/ |_| | (_| | | | (_| |
  \\____|_|  \\___/ \\_/ \\___|\\__, |\\__,_|_|  \\__,_|
@@ -138,7 +138,7 @@ export async function runCli(argv: string[]): Promise<void> {
 
   try {
     if (args.positional.includes("--help") || args.positional.includes("-h")) {
-      printHelp();
+      await printHelp();
       return;
     }
 
@@ -146,7 +146,7 @@ export async function runCli(argv: string[]): Promise<void> {
       case "help":
       case "--help":
       case "-h":
-        printHelp();
+        await printHelp();
         return;
       case "doctor":
         await doctor(args);
@@ -331,8 +331,8 @@ async function setup(args: ParsedArgs): Promise<void> {
       return;
     }
 
-    printLogo();
-    console.log(style("Supported clients", "bold"));
+    await printLogo();
+    await printTypedLine(style("Supported clients", "bold"));
     console.log(`${style("Environment", "cyan")}: ${report.environment.label.toLowerCase()}`);
     console.log("");
     for (const client of report.clients) {
@@ -368,7 +368,7 @@ async function setup(args: ParsedArgs): Promise<void> {
       serverName: report.connection.serverName,
     });
   } else if (args.json) printJson(report);
-  else printSetupReport(report, args.command === "connect" ? "Connect" : "Setup");
+  else await printSetupReport(report, args.command === "connect" ? "Connect" : "Setup");
   if (report.status === "error" || report.status === "commit_required") process.exitCode = 1;
 }
 
@@ -378,9 +378,9 @@ function normalizedClientSelection(args: ParsedArgs): ClientId[] {
   return [];
 }
 
-function printSetupReport(report: SetupReport, heading = "Setup"): void {
-  printLogo();
-  console.log(style(heading, "bold"));
+async function printSetupReport(report: SetupReport, heading = "Setup"): Promise<void> {
+  await printLogo();
+  await printTypedLine(style(heading, "bold"));
   console.log("");
 
   const requiredChecks = report.readiness.checks.filter((check) => check.required);
@@ -461,8 +461,8 @@ function printSetupLine(ok: boolean, label: string, detail?: string, overrideCol
 
 async function init(args: ParsedArgs): Promise<void> {
   if (!args.json) {
-    printLogo();
-    console.log(style("Init", "bold"));
+    await printLogo();
+    await printTypedLine(style("Init", "bold"));
     console.log(style("Preparing a safe workspace config for coding agents.", "dim"));
     console.log("");
   }
@@ -508,8 +508,8 @@ async function init(args: ParsedArgs): Promise<void> {
 
 async function doctor(args: ParsedArgs): Promise<void> {
   if (!args.json) {
-    printLogo();
-    console.log(style("Doctor", "bold"));
+    await printLogo();
+    await printTypedLine(style("Doctor", "bold"));
     console.log(style("Checking whether this repo is ready for agent worktrees.", "dim"));
     console.log("");
   }
@@ -598,8 +598,8 @@ async function upgrade(args: ParsedArgs): Promise<void> {
 
 async function dashboard(service: WorktreeSessionService, args: ParsedArgs): Promise<void> {
   if (!args.json) {
-    printLogo();
-    console.log(style("Dashboard", "bold"));
+    await printLogo();
+    await printTypedLine(style("Dashboard", "bold"));
     console.log(style("The important state for this repo's agent worktrees.", "dim"));
     console.log("");
   }
@@ -623,21 +623,21 @@ async function sessions(service: WorktreeSessionService, args: ParsedArgs): Prom
   }
 
   if (rows.length === 0) {
-    printLogo();
+    await printLogo();
     console.log("No Groveyard sessions found.");
     return;
   }
 
   if (!isInteractive() || args.plain) {
-    printLogo();
+    await printLogo();
     for (const session of rows) {
       console.log(formatSessionLine(session));
     }
     return;
   }
 
-  printLogo();
-  console.log(style("Sessions", "bold"));
+  await printLogo();
+  await printTypedLine(style("Sessions", "bold"));
   console.log(style("Pick a session to view its handoff report.", "dim"));
   console.log("");
 
@@ -673,7 +673,7 @@ async function inspect(service: WorktreeSessionService, args: ParsedArgs): Promi
     return;
   }
 
-  printLogo();
+  await printLogo();
   printHandoffReport(await buildHandoffReport(service, args, session));
 }
 
@@ -686,7 +686,7 @@ async function clean(service: WorktreeSessionService, args: ParsedArgs): Promise
     return;
   }
 
-  printLogo();
+  await printLogo();
   console.log(session.status === "released" ? `Released ${session.id}; the adopted workspace was preserved.` : `Cleaned ${session.id}; the managed workspace was removed.`);
 }
 
@@ -705,7 +705,7 @@ async function commit(service: WorktreeSessionService, args: ParsedArgs): Promis
     return;
   }
 
-  printLogo();
+  await printLogo();
   console.log(`Committed ${result.commit.sha}`);
   console.log(`Branch: ${result.session.branch}`);
   console.log(`Status: ${result.status || "clean"}`);
@@ -935,8 +935,8 @@ function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
-function printHelp(): void {
-  printLogo();
+async function printHelp(): Promise<void> {
+  await printLogo();
   console.log(`Groveyard
 
 Usage:
@@ -1221,10 +1221,40 @@ function countStatusLines(status: string): number {
   return status.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
 }
 
-function printLogo(): void {
-  for (const line of groveyardAscii.split("\n")) {
-    console.log(formatLogoLine(line));
+async function printLogo(): Promise<void> {
+  const lines = groveyardAscii.split("\n");
+  for (const [index, line] of lines.entries()) {
+    const formatted = formatLogoLine(line, index, lines.length);
+    if (!isInteractive()) {
+      console.log(formatted);
+      continue;
+    }
+
+    process.stdout.write(`${formatted}\n`);
+    await sleep(115);
   }
+
+  // Give the completed mark a moment to settle before the heading types in.
+  if (isInteractive()) {
+    await sleep(280);
+  }
+}
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function printTypedLine(value: string): Promise<void> {
+  if (!isInteractive()) {
+    console.log(value);
+    return;
+  }
+
+  for (const character of value) {
+    process.stdout.write(character);
+    await sleep(12);
+  }
+  process.stdout.write("\n");
 }
 
 async function withSpinner<T>(label: string, task: () => Promise<T>, silent: boolean): Promise<T> {
@@ -1469,37 +1499,36 @@ function style(value: string, color: StyleColor): string {
   return `${open}${value}${close}`;
 }
 
-function formatLogoLine(line: string): string {
+function formatLogoLine(line: string, lineIndex: number, lineCount: number): string {
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
     return line;
   }
 
-  const firstBreak = Math.max(1, Math.floor(line.length * 0.34));
-  const secondBreak = Math.max(firstBreak + 1, Math.floor(line.length * 0.68));
-  const visible = line.trimEnd().length;
-  const redAccent = Math.max(0, visible - 2);
+  const progress = lineCount <= 1 ? 0 : lineIndex / (lineCount - 1);
+  const [red, green, blue] = logoGradientColor(progress);
 
   return Array.from(line)
-    .map((character, index) => {
+    .map((character) => {
       if (character === " ") {
         return character;
       }
 
-      if (visible >= 12 && index >= redAccent) {
-        return truecolor(character, 255, 94, 87);
-      }
-
-      if (index >= secondBreak) {
-        return truecolor(character, 186, 255, 208);
-      }
-
-      if (index >= firstBreak) {
-        return truecolor(character, 114, 255, 168);
-      }
-
-      return truecolor(character, 76, 255, 146);
+      return truecolor(character, red, green, blue);
     })
     .join("");
+}
+
+function logoGradientColor(progress: number): [number, number, number] {
+  // Keep the saturated mint through the middle of the mark, then fade into
+  // the pale lower highlight visible in the reference artwork.
+  const start: [number, number, number] = [110, 255, 164];
+  const middle: [number, number, number] = [114, 255, 168];
+  const end: [number, number, number] = [182, 249, 202];
+  const [from, to, localProgress] = progress <= 0.54
+    ? [start, middle, progress / 0.54]
+    : [middle, end, (progress - 0.54) / 0.46];
+
+  return from.map((value, index) => Math.round(value + (to[index]! - value) * localProgress)) as [number, number, number];
 }
 
 function truecolor(value: string, red: number, green: number, blue: number): string {
