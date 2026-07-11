@@ -1,6 +1,8 @@
 # Groveyard
 
-Groveyard gives every coding-agent task an isolated, validated, disposable Git workspace—inside Codex, Claude Code, VS Code, and the tools you already use.
+Groveyard is an open-source MCP server that gives every coding-agent task an isolated, persistent, reviewable Git workspace—inside Codex, Claude Code, VS Code, and the tools you already use.
+
+Agent chats are disposable. Groveyard keeps the task's branch and workspace available when you return in a new chat or a different coding app.
 
 ## Start here
 
@@ -62,7 +64,9 @@ Agent:
 
 The primary MCP lifecycle is:
 
-- `start_session` creates a managed worktree from the main checkout or adopts an existing linked worktree.
+- `list_sessions` discovers active and completed work before a new session is created.
+- `resume_session` reopens a completed, unmerged session on the same branch and workspace.
+- `start_session` creates a managed worktree from the main checkout or adopts an existing linked worktree for a clearly new task.
 - `session_status` reports the current workspace state.
 - `validate_session` reviews status, diff, and the completion contract.
 - `finish_session` produces the handoff state without deleting work.
@@ -93,6 +97,16 @@ groveyard clean <sessionId>
 
 Configuration details and troubleshooting are in [the installation guide](../../docs/groveyard-install.md).
 
+## Open source and contributing
+
+Groveyard is MIT-licensed and developed in public. Contributions are welcome: bug reports, workflow feedback, documentation, tests, and support for additional coding clients.
+
+1. Fork the repository and branch from `dev`.
+2. Run the checks below.
+3. Open a pull request into `dev` with a concise description and tests for behavior changes.
+
+Protected branches are merged through reviewed pull requests; do not push directly to `main` or `dev`.
+
 ## Development
 
 ```bash
@@ -100,3 +114,7 @@ npm install
 npm run build:groveyard
 npm run test:groveyard
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Groveyard contributors.
