@@ -4,11 +4,10 @@ import { CopyCommand } from "./components/CopyCommand";
 export default function Home() {
   return (
     <main className="page-shell">
-      <section className="hero" aria-labelledby="hero-title">
-        <AsciiLogo className="hero-logo" decorative glitch />
+      <section className="hero" aria-label="Groveyard">
+        <AsciiLogo className="hero-logo" glitch />
 
-        <h1 id="hero-title">Groveyard</h1>
-        <p className="hero-lede">An isolated, validated Git workspace for every coding-agent task.</p>
+        <p className="hero-lede">Safe, disposable Git workspaces for coding agents.</p>
 
         <a
           aria-label="Open GitHub repository"
@@ -25,22 +24,17 @@ export default function Home() {
         </a>
       </section>
 
-      <section className="docs-section" id="install" aria-labelledby="install-title">
-        <h2 id="install-title">Start here</h2>
-        <p>Run one command in the repository where your coding agent works.</p>
-        <CopyCommand command="npx -y @groveyard/mcp setup" />
-      </section>
-
       <section className="docs-section" id="setup" aria-labelledby="setup-title">
         <h2 id="setup-title">Setup</h2>
-        <p>Groveyard detects the current coding app, installs its MCP entry and instructions, then verifies the complete path.</p>
+        <p>Run the latest Groveyard release from the repository where your coding agent works. Groveyard detects your coding app, configures its MCP connection and native instructions, then verifies that everything is ready.</p>
+        <CopyCommand command="npx -y @groveyard/mcp@latest setup" />
         <pre className="code-block">
           <code>
-            <span className="token-muted">$</span> npx -y @groveyard/mcp setup
+            <span className="token-muted">$</span> npx -y @groveyard/mcp@latest setup
             {"\n"}
             <span className="token-key">✓</span> Found repository
             {"\n"}
-            <span className="token-key">✓</span> Detected VS Code
+            <span className="token-key">✓</span> Detected coding app
             {"\n"}
             <span className="token-key">✓</span> Installed Groveyard MCP
             {"\n"}
@@ -48,19 +42,24 @@ export default function Home() {
             {"\n"}
             <span className="token-key">✓</span> Verified connection
             {"\n\n"}
-            <span className="token-string">Groveyard is ready. Restart VS Code and ask your agent to implement a task.</span>
+            <span className="token-string">Groveyard is ready. Restart your coding app, then give your agent a task.</span>
           </code>
         </pre>
       </section>
 
+      <section className="docs-section" aria-labelledby="clients-title">
+        <h2 id="clients-title">Works with your coding app</h2>
+        <p>Groveyard supports Codex, Claude Code, VS Code/Copilot, Cursor, Gemini CLI, OpenCode, Claude Desktop, and other MCP clients.</p>
+      </section>
+
       <section className="docs-section" aria-labelledby="usage-title">
         <h2 id="usage-title">Usage</h2>
-        <p>Give your agent a code-changing task. Groveyard creates or adopts a workspace and validates the handoff.</p>
+        <p>Ask your agent to make a change. Groveyard creates or adopts an isolated workspace, keeps your main checkout clean, and validates the handoff.</p>
         <pre className="code-block">
           <code>
             <span className="token-muted">You:</span>
             {"\n"}
-            <span className="token-string">Fix the authentication timeout and run the tests.</span>
+            <span className="token-string">Fix the authentication timeout. Run the tests.</span>
             {"\n\n"}
             <span className="token-muted">Agent:</span>
             {"\n"}
@@ -70,7 +69,19 @@ export default function Home() {
             {"\n"}
             <span className="token-key">✓</span> Validation passed
             {"\n"}
-            <span className="token-key">✓</span> Session ready to merge
+            <span className="token-key">✓</span> Changes ready to merge
+          </code>
+        </pre>
+      </section>
+
+      <section className="docs-section" aria-labelledby="lifecycle-title">
+        <h2 id="lifecycle-title">A complete task lifecycle</h2>
+        <p>Start a session, work inside the returned workspace, validate the result, then finish or clean up when the task is done.</p>
+        <pre className="code-block">
+          <code>
+            <span className="token-muted">start_session</span>  →  <span className="token-muted">session_status</span>  →  <span className="token-muted">validate_session</span>
+            {"\n"}
+            <span className="token-muted">finish_session</span> →  <span className="token-muted">cleanup_session</span>
           </code>
         </pre>
       </section>

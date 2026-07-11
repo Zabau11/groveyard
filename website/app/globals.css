@@ -43,7 +43,7 @@ a {
 .page-shell {
   width: min(680px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 132px 0 34px;
+  padding: 96px 0 34px;
 }
 
 .hero {
@@ -113,8 +113,16 @@ h1 {
   margin-top: 102px;
 }
 
+.hero + .docs-section {
+  margin-top: 48px;
+}
+
 .docs-section + .docs-section {
   margin-top: 54px;
+}
+
+#setup + .docs-section {
+  margin-top: 120px;
 }
 
 .docs-section h2 {
