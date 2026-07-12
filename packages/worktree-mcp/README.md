@@ -101,11 +101,11 @@ Configuration details and troubleshooting are in [the installation guide](../../
 
 Groveyard is MIT-licensed and developed in public. Contributions are welcome: bug reports, workflow feedback, documentation, tests, and support for additional coding clients.
 
-1. Fork the repository and branch from `dev`.
+1. Fork the repository and branch from `main`.
 2. Run the checks below.
-3. Open a pull request into `dev` with a concise description and tests for behavior changes.
+3. Open a pull request into `main` with a concise description and tests for behavior changes.
 
-Protected branches are merged through reviewed pull requests; do not push directly to `main` or `dev`.
+The protected `main` branch is updated through reviewed pull requests; do not push to it directly.
 
 ## Development
 

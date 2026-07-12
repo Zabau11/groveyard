@@ -73,7 +73,7 @@ Groveyard is MIT-licensed and built in public. Issues, bug reports, docs improve
 
 To contribute:
 
-1. Fork the repository and create a feature branch from `dev`.
+1. Fork the repository and create a feature branch from `main`.
 2. Install dependencies and run the relevant checks:
 
    ```bash
@@ -82,10 +82,10 @@ To contribute:
    npm run typecheck
    ```
 
-3. Open a pull request into `dev` with a clear description and tests for behavior changes.
+3. Open a pull request into `main` with a clear description and tests for behavior changes.
 4. A maintainer reviews the PR before it is merged.
 
-Please do not push directly to `main` or `dev`; protected branches are merged through pull requests.
+Please do not push directly to `main`; the protected branch is updated through pull requests.
 
 ## Development
 
