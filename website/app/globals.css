@@ -166,6 +166,10 @@ code {
   padding: 0 8px 0 14px;
 }
 
+.command-line + .code-block {
+  margin-top: 14px;
+}
+
 .copy-icon {
   position: relative;
   width: 30px;
